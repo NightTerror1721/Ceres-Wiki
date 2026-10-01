@@ -1,0 +1,22 @@
+# Reference: the standard library
+
+The **Ceres STDLIB** is the whole C library plus the `ceres/` API for the machine. Every
+header opens with a comment that says what it is for; the STDLIB's own `tools/gendocs.js` turns
+those into `docs/reference/`, one page per header, so the reference never drifts from the code.
+
+This index lists **every** header, grouped into the C library and the `ceres/` extras, with the
+first sentence of its description. The generator reads it straight from the headers
+(`tools/gen/gen-stdlib-index.mjs`).
+
+<Callout type="info" title="How to read this">
+The narrative pages of this wiki (the *Standard library*, *The Ceres API*, *Graphics* and
+*System* sections) explain and give examples. This page is the **exhaustive map**: if a header
+exists, it is here.
+</Callout>
+
+<Include file="_stdlib-index.mdx" />
+
+<Quiz question="Where does the reference for a stdlib header come from?"
+  options="A hand-written page|The header's own comments|The SPEC|A PDF"
+  answer="1"
+  explain="gendocs.js (in the STDLIB) turns each header's opening comment and declarations into a page, so the reference cannot drift from the code."></Quiz>

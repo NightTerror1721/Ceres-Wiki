@@ -1,0 +1,23 @@
+# Referencia: la librería estándar
+
+La **STDLIB de Ceres** es toda la librería C más la API `ceres/` de la máquina. Cada cabecera
+abre con un comentario que dice para qué sirve; el propio `tools/gendocs.js` de la STDLIB los
+convierte en `docs/reference/`, una página por cabecera, así la referencia no se desincroniza
+del código.
+
+Este índice lista **todas** las cabeceras, agrupadas en la librería C y los extras `ceres/`, con
+la primera frase de su descripción. El generador la lee directamente de las cabeceras
+(`tools/gen/gen-stdlib-index.mjs`).
+
+<Callout type="info" title="Cómo leer esto">
+Las páginas narrativas de esta wiki (las secciones *Librería estándar*, *La API de Ceres*,
+*Gráficos* y *Sistema*) explican y ponen ejemplos. Esta página es el **mapa exhaustivo**: si una
+cabecera existe, está aquí.
+</Callout>
+
+<Include file="_stdlib-index.mdx" />
+
+<Quiz question="¿De dónde sale la referencia de una cabecera de la stdlib?"
+  options="De una página escrita a mano|De los comentarios de la propia cabecera|Del SPEC|De un PDF"
+  answer="1"
+  explain="gendocs.js (en la STDLIB) convierte el comentario inicial y las declaraciones de cada cabecera en una página, así la referencia no se desincroniza del código."></Quiz>

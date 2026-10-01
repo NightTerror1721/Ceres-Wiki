@@ -170,6 +170,7 @@
       "icon": "📖",
       "pages": [
         { "slug": "ref-cheatsheet", "title": "Chuletario" },
+        { "slug": "ref-stdlib", "title": "La librería estándar" },
         { "slug": "ref-dispositivos", "title": "Dispositivos" },
         { "slug": "ref-interrupciones", "title": "Interrupciones" },
         { "slug": "ref-apendice", "title": "Apéndice: registros y ABI" }

@@ -170,6 +170,7 @@
       "icon": "📖",
       "pages": [
         { "slug": "ref-cheatsheet", "title": "Cheat sheet" },
+        { "slug": "ref-stdlib", "title": "The standard library" },
         { "slug": "ref-dispositivos", "title": "Devices" },
         { "slug": "ref-interrupciones", "title": "Interrupts" },
         { "slug": "ref-apendice", "title": "Appendix: registers and ABI" }

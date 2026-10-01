@@ -1,0 +1,121 @@
+### The C library
+
+| Header | What it is |
+| --- | --- |
+| `<assert.h>` | assert(expr) stops the program with "file:line: function: assertion 'expr' failed" when expr is 0. |
+| `<ctype.h>` | Every one looks at its argument alone (the "C" locale), so each is `const`: a call whose result nothing reads may go. |
+| `<errno.h>` | One variable for the whole program: the machine has a single thread of control. |
+| `<float.h>` | Ceres has two floating-point formats, IEEE 754 binary32 (`float`) and binary64 (`double`, and `long double`, which is the same type). |
+| `<inttypes.h>` | printf/scanf conversion specifiers for the fixed-width types, e.g. printf("%" PRIu32 " bytes\n", n); `long` is 32 bits here, so the 32-bit... |
+| `<iso646.h>` | The alternative spellings of the operators (ISO C, Amendment 1). |
+| `<limits.h>` | Ceres is a 32-bit machine: `long` is `int` (32 bits). |
+| `<locale.h>` | Locales. |
+| `<math.h>` | <math.h> in the machine's two formats. |
+| `<setjmp.h>` | Non-local jumps (asm/setjmp.casm). |
+| `<signal.h>` | Signals. |
+| `<stdalign.h>` | C11 <stdalign.h>. |
+| `<stdarg.h>` | Variable arguments. |
+| `<stdbit.h>` | C23 <stdbit.h>: counting and finding bits, on the machine's own clz, ctz and popcnt instructions (through the compiler's builtins, so a call is a... |
+| `<stdbool.h>` | bool, true and false are part of the language here (ceresc knows them as keywords), so this header adds nothing but the macro C99 says it defines,... |
+| `<stdckdint.h>` | C23 <stdckdint.h>: checked integer arithmetic. |
+| `<stddef.h>` | NULL, size_t, ptrdiff_t, wchar_t and offsetof. |
+| `<stdint.h>` | Fixed-width integers for a 32-bit machine. |
+| `<stdio.h>` | Console I/O over the terminal device (see ceres/terminal.h), formatted input and output, and streams (FILE) over the terminal, over memory, and... |
+| `<stdlib.h>` | General utilities. |
+| `<stdnoreturn.h>` | C11 <stdnoreturn.h>: `noreturn` for the _Noreturn function specifier (which Ceres-C predefines as __attribute__((__noreturn__)), since 558335b). |
+| `<string.h>` | Memory (asm/memory.casm): word-at-a-time when both pointers are aligned, bytes otherwise. |
+| `<strings.h>` | BSD string utilities (src/string.c). |
+| `<time.h>` | Calendar time. |
+| `<uchar.h>` | C11/C23 <uchar.h>: the character types of the prefixed literals, and the conversions between them and the multibyte strings of the rest of the... |
+| `<wchar.h>` | Wide characters. |
+
+### Ceres: the machine and the extras
+
+| Header | What it is |
+| --- | --- |
+| `<ceres/ansi.h>` | ANSI escape sequences: cursor movement, colours, clearing. |
+| `<ceres/arena.h>` | A linear allocator: allocation is a pointer bump, and everything is released at once (or back to a mark). |
+| `<ceres/atomic.h>` | Read-modify-write that an interrupt cannot cut in half. |
+| `<ceres/audio.h>` | Audio device (0xFF200000): a tone generator with one voice - a note of a given frequency, duration, volume and waveform. |
+| `<ceres/backtrace.h>` | The call stack as it stands, and names for code addresses. |
+| `<ceres/bits.h>` | The bit instructions, plus helpers built on them. |
+| `<ceres/blitter.h>` | The 2D blitter (0xFF460000, CeresASM 3b2db3b): rectangle operations on RGB32 surfaces in RAM done by the host, at no cost in instructions. |
+| `<ceres/blockdev.h>` | Block devices: what CeresFS (ceres/fs.h) keeps its volumes on. |
+| `<ceres/color.h>` | Colours are 0x00RRGGBB in an unsigned int, the format of the bitmap plane (ceres/fb.h). |
+| `<ceres/config.h>` | Compile-time configuration. |
+| `<ceres/debug.h>` | Logging and inspection for programs under development. |
+| `<ceres/disk.h>` | Disk (0xFF300000): sectors of BLOCKDEV_SECTOR bytes. |
+| `<ceres/dma.h>` | DMA controller (0xFF020000): copies memory to memory without the program moving it word by word. |
+| `<ceres/ds/bitset.h>` | A set of small integers 0 .. nbits-1 as one bit each, over words the caller provides: occupancy maps, tile flags, "which of these are used". |
+| `<ceres/ds/bloom.h>` | A Bloom filter: approximate set membership in a fraction of a real set's memory, at the cost of occasional false positives (never false negatives)... |
+| `<ceres/ds/cqueue.h>` | A fixed-capacity circular queue of fixed-size elements, over a buffer the caller provides: the ringbuf.h idea generalized from bytes to a... |
+| `<ceres/ds/deque.h>` | A double-ended queue of fixed-size elements that grows: push and pop at EITHER end in O(1) amortized, and dq_at is random access by logical index. |
+| `<ceres/ds/dsu.h>` | A disjoint-set (union-find) over the integers 0 .. n-1, on memory the caller provides - the textbook structure, no nodes and no allocation of its... |
+| `<ceres/ds/flatmap.h>` | A map kept as a vector of (key, value) pairs, sorted by key: for a few dozen to a few hundred entries - configuration, a lookup table built once... |
+| `<ceres/ds/flatset.h>` | A set kept as a sorted vector of keys, searched by bisection - ceres/ds/flatmap.h with no value, for the same reason ceres/ds/hset.h exists next... |
+| `<ceres/ds/generic.h>` | _Generic sugar over ten of the eighteen collections (hset, gmap, multimap, lru, rbtree, skiplist, omap, flatmap/flatset, iheap) that all take a... |
+| `<ceres/ds/gmap.h>` | A hash map from a key of any fixed size to a value of any fixed size - ceres/ds/hashmap.h widened past "string to pointer". |
+| `<ceres/ds/hashmap.h>` | A hash map from strings to pointers: ceres/ds/gmap.h with the string key baked in. |
+| `<ceres/ds/hset.h>` | A set of keys of any fixed size - ceres/ds/gmap.h with no value, the hash-table counterpart to ceres/ds/flatset.h. |
+| `<ceres/ds/iheap.h>` | A binary heap like ceres/ds/pqueue.h, plus what pqueue.h cannot do: lower an element's priority after it is already inside, or take a specific... |
+| `<ceres/ds/list.h>` | A doubly linked list whose node lives INSIDE the object it links: no allocation, and an object can sit on several lists at once by carrying... |
+| `<ceres/ds/lru.h>` | A cache of bounded size with least-recently-used eviction: ceres/ds/gmap.h for O(1) lookup by key, ceres/ds/list.h for O(1) "move to the front"... |
+| `<ceres/ds/multimap.h>` | A map from one key to any number of values - an event's list of listeners, a name's list of adjacent nodes - which neither ceres/ds/hashmap.h nor... |
+| `<ceres/ds/omap.h>` | An ordered map of copies, keyed and valued by anything of a fixed size: the convenience layer over ceres/ds/rbtree.h, the way ceres/ds/pqueue.h is... |
+| `<ceres/ds/oset.h>` | An ordered set of copies - ceres/ds/omap.h with no value, the tree-backed counterpart to ceres/ds/hset.h and ceres/ds/flatset.h. |
+| `<ceres/ds/pqueue.h>` | A priority queue: a binary min-heap of fixed-size elements ordered by a comparison function. |
+| `<ceres/ds/rbtree.h>` | A red-black tree whose node lives INSIDE the object it orders: no allocation, no copy, the same idea as ceres/ds/list.h taken to a tree - the... |
+| `<ceres/ds/ringbuf.h>` | A first-in, first-out queue of bytes in a fixed buffer: the "input event buffer" - an interrupt handler pushes, the main loop drains. |
+| `<ceres/ds/skiplist.h>` | A skip list: an ordered map by coin flips instead of rotations, documented next to ceres/ds/rbtree.h as the alternative to reach for if a... |
+| `<ceres/ds/slist.h>` | A singly linked list whose node lives INSIDE the object it links: no allocation, one pointer per node instead of list.h's two. |
+| `<ceres/ds/slotmap.h>` | Stable handles into a growable array: removing one entity never invalidates another's handle, and a handle kept too long is detectably stale... |
+| `<ceres/ds/stack.h>` | A LIFO stack of fixed-size elements - built directly on ceres/ds/vector.h (push/pop/last are already exactly a stack's operations), named... |
+| `<ceres/ds/strbuf.h>` | A string that grows as text is appended, so a message can be built piece by piece without strcat's repeated scans or a buffer size guessed in advance. |
+| `<ceres/ds/trie.h>` | A trie over ASCII strings: "every word starting with this prefix" is a query neither ceres/ds/hashmap.h nor ceres/ds/omap.h answers well - the... |
+| `<ceres/ds/vector.h>` | A growable array of fixed-size elements. |
+| `<ceres/endian.h>` | Little- and big-endian loads and stores over a byte buffer, so the on-disk formats (CeresFS, resource packs, saved games, LZ4 frames, QOI and BMP)... |
+| `<ceres/fb.h>` | The GPU's bitmap plane (level V1, CeresASM plan/v2 SPEC 7): a picture in video memory, behind the text plane, that the screen shows at every... |
+| `<ceres/fixed.h>` | 16.16 fixed-point arithmetic, for games that want exact, repeatable numbers without the float unit. |
+| `<ceres/font.h>` | An 8x8 bitmap font for the pixel surfaces: printable ASCII (32..126) and Latin-1 (0xA0..0xFF, the code points U+00A0..U+00FF: accented letters,... |
+| `<ceres/fs.h>` | CeresFS: a small file system on a block device (ceres/blockdev.h): the internal disk, a memory stick or a cartridge in a peripheral port. |
+| `<ceres/game.h>` | A fixed-step game loop: input -> logic -> drawing -> present -> wait for the next frame. |
+| `<ceres/gamepad.h>` | Gamepad device (0xFF120000). |
+| `<ceres/gfx.h>` | 2D drawing on the GPU's bitmap plane (ceres/fb.h). |
+| `<ceres/hash.h>` | Hashes and checksums, all in 32-bit arithmetic. |
+| `<ceres/heap.h>` | Dynamic memory. |
+| `<ceres/hostfs.h>` | Files of the host: semihosting through the machine's host file device (CeresASM 1c51ade). |
+| `<ceres/image.h>` | Images from files and packs into surfaces (ceres/gfx.h), so sprites and tiles need not be compiled in as arrays. |
+| `<ceres/ini.h>` | INI files, for settings: sections of `key = value` lines. |
+| `<ceres/input.h>` | Input for a frame loop: the state of the keyboard, the mouse and the gamepad as of the last input_update(), with "went down this frame" and "went... |
+| `<ceres/irq.h>` | Interrupt handlers attached at RUN time. |
+| `<ceres/json.h>` | JSON, read and written without the heap. |
+| `<ceres/key.h>` | Keystrokes: what a person types, one at a time, in the order they typed it - for a menu, a text field, a game's title screen. |
+| `<ceres/keyboard.h>` | Keyboard device (0xFF100000). |
+| `<ceres/keys.h>` | Key codes. |
+| `<ceres/line.h>` | Text input for terminal programs: a whole line, a number, a yes/no, a numbered choice. |
+| `<ceres/lz.h>` | LZ4: compression that is fast to undo, for assets on a cartridge, saves and anything else worth keeping small. |
+| `<ceres/mmu.h>` | The MMU (CeresASM docs/27-Virtual-Memory-and-Paging.md): two-level page tables over 4 KiB pages, off until a program turns it on. |
+| `<ceres/mouse.h>` | Mouse device (0xFF110000). |
+| `<ceres/music.h>` | Music and sound effects on the audio device's four channels (CeresASM 848fae2): each a waveform, a volume and an ADSR envelope, mixed by the host. |
+| `<ceres/pack.h>` | Resource packs: a program's assets - images, levels, text, music - in one file that is read a piece at a time, from a cartridge in a peripheral... |
+| `<ceres/periph.h>` | Peripheral ports (0xFF320000): media that a person plugs in while the program runs - a memory stick, a game cartridge. |
+| `<ceres/pool.h>` | Fixed-size blocks with allocation and release in constant time: entities, bullets, particles. |
+| `<ceres/rand.h>` | Pseudo-random generators with explicit, reproducible state: two runs with the same seed give the same sequence (the VM is deterministic apart from... |
+| `<ceres/save.h>` | Saved games that survive the machine stopping half way through a save. |
+| `<ceres/sort.h>` | A stable sort: elements that compare equal keep the order they had, which qsort does not promise. |
+| `<ceres/sprite.h>` | The GPU's sprites (level V2, CeresASM plan/v2 SPEC 7.5): 128 small pictures, 8 to 64 pixels a side, that the GPU draws over and under the tile... |
+| `<ceres/string_fast.h>` | The word-at-a-time strcpy, strcmp, strchr and memchr (asm/string_fast.casm) ARE the standard functions now: every program gets them through... |
+| `<ceres/sys.h>` | The machine as a program sees it: how to stop it, and where its memory is. |
+| `<ceres/task.h>` | Tasks: coroutines with a scheduler, cooperative. |
+| `<ceres/terminal.h>` | The terminal (0xFF000000): the program's standard input, output and error. |
+| `<ceres/test.h>` | A minimal test framework. |
+| `<ceres/text.h>` | The GPU's text plane (level V0, CeresASM plan/v2 SPEC 7): a grid of 8x16 cells in video memory, drawn in front of everything else. |
+| `<ceres/tiles.h>` | The GPU's tile layers (level V2, CeresASM plan/v2 SPEC 7.5): the screen built from small pictures, as the 8- and 16-bit consoles did it. |
+| `<ceres/timer.h>` | Timer device (0xFF010000). |
+| `<ceres/tui.h>` | A small text user interface, drawn into the GPU's text plane (text.h): windows with a title, labels, buttons, a progress bar, a scrolling list and... |
+| `<ceres/utf8.h>` | UTF-8, the encoding of every string in this library: source files, the terminal, the files a program writes, and the multibyte strings of... |
+| `<ceres/vecmath.h>` | 2D and 3D vectors passed and returned by value, and the small numeric helpers games keep rewriting. |
+| `<ceres/video.h>` | The GPU (0xFF400000): the screen and what it shows, for every video level (CeresASM plan/v2 SPEC 7). |
+| `<ceres.h>` | Ceres stdlib - low-level device access. |
+| `<interrupts.h>` | Interrupt number space. |
+
