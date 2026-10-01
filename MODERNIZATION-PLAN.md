@@ -189,35 +189,38 @@ Removed the v1 terms (`--soft-double`/`f64.h`, `--terminal`, `textfb`, `display.
 `instalacion`, `consola-io`, `ref-cheatsheet`, `cli-ceresc`. Lint at 0. Repo documentation moved
 to English. Acceptance: `node tools/lint.mjs` = OK.
 
-### Phase W2 — Package and toolchain (CeresBinaries)
-- Tasks: `/instalar-paquete`, `/construir-ceres`, update `/compilar-fuentes`, `/toolchain`,
-  `/requisitos`; exact commands from `CeresBinaries/README.md`.
-- Acceptance: a reader on Windows/Linux can install or build Ceres from the wiki alone.
+### Phase W2 — Package and toolchain (CeresBinaries) — **DONE**
+`/instalar-paquete` (Windows setup/zip + `install.cmd`, Linux/macOS `install.sh`, `CERES_PATH`,
+uninstall) and `/construir-ceres` (`git clone --recursive`, `build.ps1`/`build.sh`, `-Prebuilt`/
+`--no-sdl`, smoke test, release, layout); `/instalacion` rewritten as an overview with the
+correct `--stdlib` behaviour and the three optional modules; `/build-toolchain` fixed (tools are
+found via `CERES`/`CERESC`/`CERES_PATH`/`PATH`, not `../../Ceres-C`).
 
-### Phase W3 — The v2 machine
-- Tasks: the "Machine" section (v2 memory, ISA32/64, IRQ, clocks/profiles, scheduler, bus,
-  debugger, formats, headless); `ref-interrupciones`, `ref-opcodes`, `ref-abi-registros`,
-  `ref-formatos`, `ref-estado-implementacion`; the shell/`sys_run` guide.
-- Acceptance: `ref-dispositivos` and the IRQ/opcodes tables generated and verified against the code.
+### Phase W3 — The v2 machine — **DONE**
+New "Machine" section (`maquina-{memoria,perfiles,interrupciones,shell,terminal,headless}`) and
+"the Ceres API" section (`api-{video,text,fb}`); `ref-dispositivos` and `ref-interrupciones`.
+The tables (memory map, device slots, exceptions, interrupts, profiles, cycles, fault reasons)
+are **generated** by `tools/gen/gen-tables.mjs` from the SPEC and included with a new `<Include>`
+component; CI regenerates and fails on drift. `gfx-texto` moved to `text_*` (V0) and
+`gfx-display` to `fb_*` (V1); the IRQ tables and `inicio` corrected.
 
-### Phase W4 — Complete stdlib reference
-- Tasks: a reference page per standard header and per `ceres/*.h`; index with status
-  (implemented/planned); v2 cheat sheet.
-- Acceptance: **every** header under `include/` has an entry; `gen-stdlib-index` leaves no gaps.
+### Phase W4 — Complete stdlib reference — **DONE**
+`tools/gen/gen-stdlib-index.mjs` walks the STDLIB `include/**` and builds `[ref-stdlib]`: **all
+111 headers**, grouped into the C library and the `ceres/` extras, each with the first sentence
+of its header comment (the same rule as the STDLIB's own `gendocs.js`).
 
-### Phase W5 — CLI and tools
-- Tasks: `/cli-ceres` and `/cli-ceresc` generated + explained with examples; `/cli-debugger`;
-  `/tools`.
-- Acceptance: every option of `ceres --help`/`ceresc --help` is documented with an example.
+### Phase W5 — CLI and tools — **DONE**
+`tools/gen/gen-cli.mjs` produces the `ceres` command/option tables and the `ceresc` option and
+optimization tables from `--help`; `cli-ceres` and `cli-ceresc` rewritten for v2 (machine options,
+`--stdlib`, split pipeline, exit codes, virtual terminal); new `/cli-tools`.
 
-### Phase W6 — Guides, migration and FAQ
-- Tasks: separate compilation, own libraries, tests/headless CI, debugging, v1→v2 migration,
-  glossary, FAQ; review the games against the v2 APIs.
-- Acceptance: complete "learn to use everything" tours; no broken links.
+### Phase W6 — Guides, migration and FAQ — **DONE**
+New `/guia-migracion` (the only page allowed the v1 terms, via `lint:v1`), `/ref-estado`
+(F0–F8 done, F9+ planned), `/ref-glosario` and `/ref-faq`; new "Guides" section.
 
-### Phase W7 — Close and publish
-- Tasks: 100 % es/en parity; `selfcheck` + `build.js` green; style pass; publish `dist/`.
-- Acceptance: `node tools/selfcheck.js` = OK; `node tools/build.js` builds en/es fully.
+### Phase W7 — Close and publish — **DONE**
+100 % es/en parity (83 pages each); `selfcheck` and `build.js` green; repo docs in English. This
+plan's phases record what shipped.
 
 ---
 
