@@ -1,0 +1,55 @@
+# El terminal virtual y el registro de depuración
+
+Un programa tiene dos formas de hablar: su **terminal**, para su usuario, y su **registro de
+depuración**, para quien lo ejecuta. Ninguno es el terminal del host. El **terminal virtual** en
+`0xFF000000` se dibuja en el plano de texto de la GPU, en la ventana de la máquina, y lee lo
+que se teclea allí; el **registro de depuración** en `0xFF030000` va al log del host, por stderr
+o a un fichero. Lo que un programa escribe nunca llega al stdout del proceso, con ventana o sin
+ella.
+
+## Registros del terminal (`0xFF000000`)
+
+| Offset | Registro | Acceso | Significado |
+| --- | --- | --- | --- |
+| `0x00` | `Status` | R | b0 hay entrada; b1 listo para salida; b2 fin de entrada; b3 Ctrl+C pendiente |
+| `0x04` | `Output` | W | El byte bajo va a la salida: UTF-8, controles y secuencias ANSI |
+| `0x08` | `Input` | R | El siguiente byte de entrada, o `0` si no hay |
+| `0x0C` | `Available` | R | Cuántos bytes de entrada esperan |
+| `0x10` | `Mode` | RW | b0 raw; b1 eco; b2 historial; b3 interrupción 19 al haber entrada |
+| `0x14` | `ErrorOutput` | W | El byte bajo a la salida en el color de error |
+| `0x18` | `Control` | RW | b0 activo; b1 cursor visible; b2 guardar scrollback; b3 scroll abajo |
+| `0x1C`/`0x20` | `Cols`/`Rows` | R | La pantalla en celdas |
+| `0x24`/`0x28` | `CursorX`/`CursorY` | RW | Dónde va el siguiente carácter |
+| `0x2C` | `InterruptAck` | W | `1` borra un Ctrl+C pendiente |
+| `0xF0`/`0xF4` | `BlockAddress`/`BlockLength` | W | Un búfer en RAM |
+| `0xF8` | `BlockCommand` | W | `1` escribe el búfer, `2` lee hasta `BlockLength` bytes, `3` lo escribe al flujo de error |
+| `0xFC` | `BlockCount` | R | Bytes movidos por el último bloque |
+
+La salida acepta UTF-8, controles (`\r`, `\n`, `\b`, `\t`, `\a`) y secuencias **ANSI**
+(`A`,`B`,`C`,`D`,`H`,`f`,`J`,`K`,`m`,`s`,`u`,`?25l`/`?25h`,`r` y colores `38;5;n`/`48;5;n`). La
+entrada pasa por una **disciplina de línea**: cocinada (editable y entregada entera con Enter,
+con historial) o raw (cada tecla al momento).
+
+## El registro de depuración (`0xFF030000`)
+
+| Offset | Registro | Acceso | Significado |
+| --- | --- | --- | --- |
+| `0x00` | `Output` | W | Un carácter; `\n` envía la línea |
+| `0x04` | `Level` | RW | `0` error, `1` aviso, `2` info (por defecto), `3` depuración |
+| `0x08` | `Flush` | W | Envía la línea sin terminar |
+| `0x0C` | `Break` | W | Bajo `ceres debug`, para en la siguiente instrucción |
+| `0x10` | `Enabled` | R | `1` cuando el host recoge el log |
+
+El host pone cada línea en su log como `[ceres:<nivel>] <línea>`, por stderr o en el fichero de
+`--log`. `ceres/debug.h` (`log_msg`, `LOGE`…`LOGD`, `dbg_hexdump`, `dbg_break`) escribe aquí.
+
+<Callout type="info" title="Dos flujos, una pantalla">
+`stderr` (el registro `ErrorOutput` y el comando de bloque 3) se dibuja en el terminal en el
+color de error; no se copia al terminal del host. Una excepción no manejada se pinta sobre la
+pantalla en blanco sobre rojo y también va al log.
+</Callout>
+
+<Quiz question="¿Dónde acaba lo que un programa escribe con printf?"
+  options="En el stdout del host|En su terminal virtual (el plano de texto)|En el registro de depuración|En nada"
+  answer="1"
+  explain="Un programa nunca escribe el stdout del host: su salida va a su terminal virtual, dibujado en el plano de texto de la GPU."></Quiz>

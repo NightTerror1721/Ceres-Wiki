@@ -16,13 +16,13 @@ Ceres is not a standalone library: it is **three projects that fit together**.
 
 | Project | What it is | What it gives you |
 |---|---|---|
-| **CeresASM** | The virtual machine | 32-bit processor, 183 instructions, MMIO devices, reverse-execution debugger |
-| **Ceres-C** | The compiler | C (C89 + `long long` + parts of C11/C23) producing readable assembly |
+| **CeresASM** | The virtual machine | A 32-bit processor with a native 64-bit ISA over register pairs, MMIO devices, clocks and profiles, a shell, a reverse-execution debugger |
+| **Ceres-C** | The compiler | C (C89 + `long long` + `double` + parts of C11/C23) producing readable assembly |
 | **Ceres STDLIB** | The standard library | `stdio`, `stdlib`, `math`, graphics, sound, files, data structures… |
 
 The flow is **C → CASM → object → program**, and the whole environment is
-**deterministic**: the machine's clock counts instructions, so the same program does exactly
-the same thing on every run.
+**deterministic**: the machine's time is virtual and counts cycles, so the same program does
+exactly the same thing on every run, on any host.
 
 ## Play a little first
 

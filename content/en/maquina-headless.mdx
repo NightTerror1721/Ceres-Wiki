@@ -1,0 +1,60 @@
+# Headless, recording and CI
+
+Ceres is built so that a program's run is **reproducible** and its output **capturable**,
+which is what makes automated testing possible. The machine's time is virtual and its input is
+stamped with the cycle it went in at, so the same input always produces the same output, on
+any host and at any `--speed`.
+
+## No window
+
+```bash
+ceres run game.cres --headless      # no window; the terminal still works, on a screen nobody sees
+```
+
+`--headless` (or `CERES_HEADLESS=1`, or a build without SDL) opens no window. The virtual
+terminal still works; the host keeps what the program wrote if asked to:
+
+| Option | What it writes |
+| --- | --- |
+| `--transcript <file>` | Every byte written to the terminal, in order; the error stream's between `ESC[E` and `ESC[e` |
+| `--screen-log <file>` | The text plane as plain text, a `--- present N ---` section at every `Present` |
+| `--frames <dir>` | One PNG per `Present` |
+| `--log <file>` | The debug log and the host's diagnostics |
+
+<Output title="Typical headless run">
+> ceres run hello.cres --headless --transcript out.txt
+> type out.txt
+hello, ceres
+</Output>
+
+## Scripted input
+
+| Option | What it does |
+| --- | --- |
+| `--type <file>` | Types a file on the terminal as if at the keyboard (line end is Enter) |
+| `--keys <file>` | Presses keys at instants of the machine's time (`<ms> down\|up\|press <key>`) |
+
+## Recording and replaying
+
+Everything the host gives the machine is stamped with the cycle it went in at:
+
+- `--record <file>` writes those stamps, one line per event;
+- `--replay <file>` feeds them back at the same cycles and reads no input of the host's.
+
+A replay is the recorded run, whatever the host does now or however fast it is.
+
+## In a test
+
+```bash
+ceres run test.cres --headless --speed max --transcript got.txt
+diff got.txt expected.txt
+```
+
+Because the machine's time is virtual and fast-forwardable (`--speed max`), a test that would
+take seconds in real time finishes in milliseconds, and its bytes are the same every time.
+That is how the standard library's own tests work.
+
+<Quiz question="Why can a headless run be compared byte for byte?"
+  options="Because it uses no input|Because the machine's time is virtual and input is cycle-stamped|Because it runs at --speed realtime|It cannot"
+  answer="1"
+  explain="Virtual time plus cycle-stamped input make runs deterministic: the same input gives the same output bytes, at any speed."></Quiz>

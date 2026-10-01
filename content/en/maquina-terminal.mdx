@@ -1,0 +1,54 @@
+# The virtual terminal and the debug log
+
+A program has two ways to speak: its **terminal**, for its user, and its **debug log**, for
+whoever runs it. Neither is the host's terminal. The **virtual terminal** at `0xFF000000` is
+drawn on the GPU's text plane, in the machine's window, and reads what is typed there; the
+**debug log** at `0xFF030000` goes to the host's log, on stderr or in a file. What a program
+writes never reaches the process's stdout, with a window or without one.
+
+## The terminal registers (`0xFF000000`)
+
+| Offset | Register | Access | Meaning |
+| --- | --- | --- | --- |
+| `0x00` | `Status` | R | b0 input waiting; b1 ready for output; b2 end of input; b3 Ctrl+C pending |
+| `0x04` | `Output` | W | The low byte goes to the output: UTF-8, controls and ANSI sequences |
+| `0x08` | `Input` | R | The next input byte, or `0` when there is none |
+| `0x0C` | `Available` | R | How many input bytes are waiting |
+| `0x10` | `Mode` | RW | b0 raw; b1 echo; b2 history; b3 interrupt 19 when input comes |
+| `0x14` | `ErrorOutput` | W | The low byte to the output in the error colour |
+| `0x18` | `Control` | RW | b0 on; b1 cursor visible; b2 keep a scrollback; b3 scroll at the bottom |
+| `0x1C`/`0x20` | `Cols`/`Rows` | R | The screen in cells |
+| `0x24`/`0x28` | `CursorX`/`CursorY` | RW | Where the next character goes |
+| `0x2C` | `InterruptAck` | W | `1` clears a pending Ctrl+C |
+| `0xF0`/`0xF4` | `BlockAddress`/`BlockLength` | W | A buffer in RAM |
+| `0xF8` | `BlockCommand` | W | `1` write the buffer, `2` read up to `BlockLength` bytes, `3` write to the error stream |
+| `0xFC` | `BlockCount` | R | Bytes the last block command moved |
+
+Output accepts UTF-8, controls (`\r`, `\n`, `\b`, `\t`, `\a`) and **ANSI** escape sequences
+(`A`,`B`,`C`,`D`,`H`,`f`,`J`,`K`,`m`,`s`,`u`,`?25l`/`?25h`,`r`, and `38;5;n`/`48;5;n` colours).
+Input goes through a **line discipline**: cooked (edited and handed over whole on Enter, with
+history) or raw (every key at once).
+
+## The debug log (`0xFF030000`)
+
+| Offset | Register | Access | Meaning |
+| --- | --- | --- | --- |
+| `0x00` | `Output` | W | One character; `\n` sends the line |
+| `0x04` | `Level` | RW | `0` error, `1` warn, `2` info (default), `3` debug |
+| `0x08` | `Flush` | W | Sends the unfinished line |
+| `0x0C` | `Break` | W | Under `ceres debug`, stops on the next instruction |
+| `0x10` | `Enabled` | R | `1` when the host collects the log |
+
+The host puts each line in its log as `[ceres:<level>] <line>`, on stderr or in `--log`'s file.
+`ceres/debug.h` (`log_msg`, `LOGE`…`LOGD`, `dbg_hexdump`, `dbg_break`) writes here.
+
+<Callout type="info" title="Two streams, one screen">
+`stderr` (the `ErrorOutput` register and block command 3) is drawn on the terminal in the
+error colour; it is not copied to the host's terminal. An unhandled exception is painted over
+the screen in white on red and also goes to the log.
+</Callout>
+
+<Quiz question="Where does what a program writes with printf end up?"
+  options="The host's stdout|Its virtual terminal (the text plane)|The debug log|Nothing"
+  answer="1"
+  explain="A program never writes the host's stdout: its output goes to its virtual terminal, drawn on the GPU's text plane."></Quiz>

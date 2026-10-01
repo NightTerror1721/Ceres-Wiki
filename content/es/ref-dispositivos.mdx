@@ -1,0 +1,49 @@
+# Referencia: dispositivos
+
+La máquina alcanza cada dispositivo por **E/S mapeada en memoria (MMIO)**: cargas y
+almacenamientos normales dentro de una ventana en lo alto del espacio de direcciones, desde
+`0xFF000000`. No hay E/S por puertos. El `MmioBus` de `ceres` tiene hasta **256 slots de
+64 KiB** y enruta cada acceso al dispositivo que lo reclama; un slot sin dispositivo lee todo
+unos y descarta las escrituras.
+
+Cada registro de dispositivo es de **32 bits** y admite **solo** un acceso de 32 bits
+**alineado** (`ldr`/`str`, `fldr`/`fstr`). Un acceso de byte o media palabra a un registro es
+`MemoryFault` (`MmioWidth`); uno desalineado, `AlignmentFault`.
+
+## Slots
+
+<Include file="_device-slots.mdx" />
+
+La tabla de registros de cada dispositivo está en su propia página (Sistema, Timer, DMA,
+Registro de depuración, Teclado, Ratón, Gamepad, Audio, Disco, HostFs, Periféricos, GPU).
+
+## Control del sistema (`0xFFFF0000`)
+
+| Offset | Registro | Acceso | Qué hace |
+| --- | --- | --- | --- |
+| `0x00` | `Command` | W | Byte bajo: 1 apagar, 2 reset, **3 cargar y ejecutar** (`LoadPath`). Byte siguiente: código de salida |
+| `0x04` | `MemorySize` | R | `RamSize` |
+| `0x08` | `Features` | RW | b0 fallo por división por cero, b1 IEEE divide |
+| `0x0C` | `StackLimit` | RW | La pila no puede bajar de aquí |
+| `0x10` | `FaultAddress` | R | Dirección del último fallo |
+| `0x14` | `FaultAccess` | R | b0–7 tipo (lectura/escritura/fetch), b8–31 tamaño |
+| `0x18`/`0x1C`/`0x20` | `ArgumentCount`/`ArgumentVector`/`Environment` | R | `argc`/`argv`/`envp` |
+| `0x24` | `CpuClockHz` | R | Frecuencia de la CPU |
+| `0x28` | `ProfileId` | R | 0 `micro` … 5 `standard`, 6 `workstation`, 7 `custom` |
+| `0x2C` | `FaultReason` | R | Ver la tabla de abajo |
+| `0x30` | `LoadPath` | W | Dirección de RAM de una ruta HostFs a ejecutar (comando 3) |
+| `0x34` | `LoadArgs` | W | Dirección de RAM de `{argc, argv, envp}` para el comando 3, o 0 |
+| `0x38` | `VramSize` | R | `VramSize` |
+
+## Motivos de fallo (`FaultReason`)
+
+<Include file="_fault-reasons.mdx" />
+<Callout type="info" title="Solo lectura y escritura, de 32 bits">
+Ya no hay `mmio_r8`/`mmio_r16` ni `read_port` (lint:v1): los registros de la máquina son de
+32 bits y cada acceso es una palabra completa. Desde C, `mmio_r32()` y `mmio_w32()` en `ceres.h`.
+</Callout>
+
+<Quiz question="¿Qué hace un almacenamiento de 16 bits a un registro de dispositivo?"
+  options="Escribe la mitad baja|Escribe la mitad alta|Lanza MemoryFault (MmioWidth)|Nada"
+  answer="2"
+  explain="La MMIO es solo de 32 bits: un acceso de byte o media palabra a un registro falla con MmioWidth."></Quiz>

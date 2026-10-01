@@ -1,0 +1,64 @@
+# Memory and the address map
+
+The machine's 32-bit physical address space has three things in it: the **RAM** from
+`0x00000000`, up to 2 GiB; the **VRAM** from `0xA0000000`, up to 1 GiB; and the **devices** in
+the top 16 MiB, from `0xFF000000`. Everything else is empty.
+
+<Include file="_memory-map.mdx" />
+
+## Size
+
+```cpp
+DefaultSize = 64 MiB;   // the standard profile's
+MaxSize     = 2 GiB;    // all of 0x00000000-0x7FFFFFFF
+MinSize     = 8 KiB;
+```
+
+How much RAM and VRAM a machine has is its **profile**'s: `standard` has 64 MiB of RAM and
+32 MiB of VRAM; `micro` has 64 KiB and 32 KiB; `custom` up to 2 GiB and 1 GiB. `--ram` and
+`--vram` change it. Both are whole 4 KiB pages (RAM from 8 KiB, VRAM from 16 KiB).
+
+**Neither costs the host what it does not use.** Both are reserved as pages that read as zero
+and become real memory the first time they are written (`VirtualAlloc` on Windows, `mmap`
+elsewhere). A 2 GiB machine running a small program keeps a few MiB of the host's memory.
+
+## The RAM map
+
+| Range | Contents |
+| --- | --- |
+| `0x00000000`–`0x000000FF` | Interrupt vector table: 64 entries × 4 bytes. Entry 0 is the reset vector |
+| `0x00000100`–`0x000003FF` | BIOS: a default handler per vector that shuts the machine down (status 1) |
+| `0x00000400`– | `.text`, `.rodata`, `.data`, `.bss`, then heap and stack |
+
+## Protection
+
+- The **vector table and the BIOS** (`< 0x400`) are read-only: a store that overlaps them
+  raises `MemoryFault`.
+- **`.text` is read-only**: a write that overlaps it raises `MemoryFault`, so a lost pointer
+  fails where it happens instead of corrupting an instruction later.
+- A load or store **past the end of RAM** raises `MemoryFault` (`OutOfRam`), not silently zero.
+
+## Alignment
+
+Variables are padded to their natural alignment: 1 for `u8`, 2 for `u16`, 4 for `u32`/`f32`
+and for `u64`/`i64`/`f64` too (register pairs, same as memory). A misaligned 16- or 32-bit
+access raises `AlignmentFault`.
+
+## The stack
+
+`sp` starts at the top of RAM minus the 4 KiB **system stack** (`sp = size - 4 KiB`), which
+interrupt handlers run on, so a fault can be reported even when the program's stack overflowed.
+A loaded program starts a little lower: its arguments are placed at the top like a hosted C
+implementation, and `r0`/`r1`/`r2` hold `argc`/`argv`/`envp`. Pushing below the **stack limit**
+raises `StackOverflow`; the limit moves up with the heap (`malloc` raises it), so a stack that
+runs down into the heap also faults.
+
+<Callout type="info" title="VRAM is memory too">
+The VRAM takes every load and store the RAM does (8/16/32/64 bits), the block instructions
+and the DMA; code runs from it too. It is the GPU that reads it (see the video pages).
+</Callout>
+
+<Quiz question="What does a store past the end of RAM do?"
+  options="Reads back as zero|Raises MemoryFault (OutOfRam)|Wraps around|Is discarded silently"
+  answer="1"
+  explain="A load or store past the end of the RAM is a MemoryFault with FaultReason OutOfRam; it is not quietly zero."></Quiz>

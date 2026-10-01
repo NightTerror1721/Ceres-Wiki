@@ -1,0 +1,45 @@
+# Interrupciones y excepciones
+
+La máquina tiene **64 vectores**. Las **excepciones** (1–15) se entregan siempre; las
+**interrupciones de dispositivo** (16–63) solo con las interrupciones activas. La librería les
+pone nombre en `interrupts.h`, y sus manejadores se declaran con `__interrupt` y se atan con
+`__interrupt_vector`. Las tablas completas y los números exactos de la v2 están en
+[Referencia: interrupciones](/wiki/ref-interrupciones).
+
+## Qué es cada número
+
+- **1–7, 15** — `Trap`, `IllegalInstruction`, `MemoryFault`, `DivisionByZero`,
+  `StackOverflow`, `AlignmentFault`, `PageFault`, `Syscall`.
+- **16–35** — los dispositivos: temporizador (16/17), DMA (18), terminal (19), teclado (20),
+  ratón (21), gamepad (22), disco/hostfs/periféricos (24–26), audio (28–30), GPU (32–35).
+
+<Callout type="warn" title="Un dueño por vector">
+El enlazador permite un solo enganche por vector en todo el programa. Los módulos opcionales
+`irq`, `fault` y `mmu` enganchan vectores, así que si escribes tu propio manejador para un
+vector, **no** enlaces el módulo que también lo posee. Ver
+[Interrupciones y fallos](/wiki/sys-irq-fault).
+</Callout>
+
+## Manejarlas en tiempo de ejecución
+
+El módulo `irq` posee los vectores de dispositivo una vez y despacha a funciones que registras:
+
+```c
+// USE: irq
+#include "ceres/irq.h"
+
+static void on_teclado(int irq) { (void)irq; tecla_recibida = 1; }
+
+irq_attach(IRQ_KEYBOARD, on_teclado);   // 16-35
+irq_enable();
+/* ... */
+irq_detach(IRQ_KEYBOARD);
+```
+
+`irq_save()`/`irq_restore()` son secciones críticas; `irq_wait()` es un `sti` + `halt` atómico
+que despierta ante cualquier petición que un dispositivo lance.
+
+<Quiz question="¿Cuántos dueños permite el enlazador por número de interrupción?"
+  options="Uno|Dos|64|Ninguno"
+  answer="0"
+  explain="Un solo enganche por vector en todo el programa; por eso los módulos opcionales se eligen con // USE:."></Quiz>

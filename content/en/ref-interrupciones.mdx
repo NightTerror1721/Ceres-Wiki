@@ -1,0 +1,45 @@
+# Reference: interrupts and exceptions
+
+The machine has **64 vectors**. **Exceptions** (1–15) are always delivered; **device
+interrupts** (16–63) are delivered only with interrupts enabled (`sti`).
+
+<Callout type="warn" title="The v2 numbers are not the v1 ones">
+If you knew the old table, the terminal, DMA and keyboard numbers moved: the terminal is now
+**19**, the timer **16/17**, the keyboard **20**, and the GPU is **32–35**. Take the numbers
+from here or from `interrupts.h`, never from memory.
+</Callout>
+
+## Exceptions
+
+<Include file="_exceptions.mdx" />
+
+## Device interrupts
+
+<Include file="_interrupts.mdx" />
+
+## Binding a handler
+
+Handlers are declared with `__interrupt` and bound with `__interrupt_vector`, **once** in the
+whole program:
+
+```c
+#include "interrupts.h"
+
+__interrupt void my_timer(void)
+{
+    /* short: no printf, no malloc */
+}
+
+__interrupt_vector(IRQ_TIMER, my_timer);
+```
+
+<Callout type="warn" title="One owner per vector">
+The linker allows a single binding per vector in the whole program. The optional modules
+`irq`, `fault` and `mmu` bind vectors, so if you write your own handler for a vector, do
+**not** link the module that also owns it. Request one with `// USE: irq`.
+</Callout>
+
+<Quiz question="Which number is the terminal's input interrupt in v2?"
+  options="17|19|20|22"
+  answer="1"
+  explain="19: input available or Ctrl+C. The timer is 16/17 and the keyboard 20."></Quiz>

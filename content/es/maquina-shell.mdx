@@ -1,0 +1,81 @@
+# La shell y cargar programas
+
+Un programa puede ceder la máquina a otro, y `ceres run` puede poner una **shell** delante de
+todo: arrancar la máquina, tener un prompt, moverse por el directorio del host y ejecutar
+programas desde él, como en un ordenador doméstico. El lado de la máquina es pequeño — un
+comando del dispositivo de control — y la shell es un programa normal de la librería C
+(`shell/shell.c`).
+
+## Cargar desde dentro de la máquina: el comando 3
+
+El dispositivo de control del sistema tiene dos registros de solo escritura y un comando:
+
+| Offset | Registro | Significado |
+| --- | --- | --- |
+| `0x30` | `LoadPath` | Dirección de RAM de una ruta terminada en NUL en el directorio del host: el `.cres` a ejecutar |
+| `0x34` | `LoadArgs` | Dirección de RAM de tres palabras — `argc`, la dirección de `argv`, la de `envp` — o `0` |
+| `0x00` | `Command` | `3`: carga el programa de `LoadPath` y lo ejecuta en lugar de este |
+
+```casm
+la   r1, path              // "games/snake.cres"
+str  [r13 + 0x30], r1      // r13 = 0xFFFF0000
+la   r1, block             // { 2, argv, 0 }
+str  [r13 + 0x34], r1
+li   r1, 3
+str  [r13 + 0x00], r1      // la última instrucción de este programa - salvo que la carga falle
+```
+
+Qué pasa, en orden:
+
+1. El almacenamiento lee la ruta y el bloque de la RAM **de golpe** (cadenas de hasta 4095
+   bytes, 256 argumentos y tantas entradas de entorno).
+2. El host resuelve la ruta como lo hace HostFs (relativa, nada fuera del directorio del host),
+   lee el `.cres` y comprueba que cabe en la máquina con sus argumentos.
+3. Si todo va bien, la instrucción siguiente al almacenamiento nunca corre: la máquina
+   reinicia **como en un reset**, con la imagen nueva. El programa nuevo recibe `argv` del
+   bloque y el entorno de `envp` (o el del programa en curso cuando `envp` es `0`).
+4. Si algo falla, **el programa sigue tras su almacenamiento**, como cuando `execve` retorna; el
+   log dice por qué.
+
+La librería C lo envuelve: `sys_run(path, argc, argv, envp)` en `ceres/sys.h`, que hace flush de
+stdio antes y devuelve `-1` solo cuando la carga falló.
+
+## `--shell` y `ceres run` sin programa
+
+```bash
+ceres run                        # la shell, desde <CERES_PATH>/shell/shell.cres
+ceres run --profile micro        # la shell pequeña: <CERES_PATH>/shell/shell-small.cres
+ceres run game.cres --shell      # game.cres primero, luego la shell
+```
+
+- **La shell** es `shell/shell.cres` donde está instalado Ceres (`CERES_PATH`, o junto a
+  `ceres`). Sin shell, `ceres run` dice dónde buscó y sale con estado 1.
+- **La shell que cabe.** Un directorio de instalación tiene dos: `shell.cres` (unos 90 KB de
+  RAM) y `shell-small.cres` (unos 53 KB), así hasta `micro` (64 KiB) tiene shell. `ceres` toma
+  la primera que cabe.
+- Cuando un programa termina, la shell se carga otra vez; `argv` es la ruta de la shell y el
+  entorno es el del programa con `CERES_STATUS=<su estado>`, así la shell sabe cómo terminó.
+
+## Los comandos de la shell
+
+| Comando | Qué hace |
+| --- | --- |
+| `help [comando]` | Los comandos, o uno de ellos |
+| `ls [dir]` | Ficheros (con tamaños) y directorios de un directorio, o un fichero |
+| `cd [dir]` | Cambia de directorio; `cd` solo va a lo alto del directorio del host |
+| `cat <fichero>...` | Muestra lo que contienen los ficheros |
+| `run <fichero> [args]` | Ejecuta un `.cres` con esos argumentos y vuelve |
+| `clear` | Limpia la pantalla |
+| `mem` | La RAM y cuánta queda libre, y la VRAM |
+| `time` | La fecha y hora (UTC) y el tiempo encendida |
+| `info` | Perfil, reloj de CPU, memoria, nivel de vídeo y resolución, tamaño del terminal |
+| `reset` | Reinicia la máquina (comando 2) |
+| `exit [estado]` | Termina la shell, y con ella la ejecución |
+
+Ctrl+C en el prompt descarta la línea; Ctrl+D en una línea vacía termina la shell. Los errores
+van al flujo de error en el color de error.
+
+<Quiz question="¿Qué comando del control del sistema carga y ejecuta otro programa?"
+  options="1|2|3|4"
+  answer="2"
+  explain="El comando 3: carga el programa de LoadPath (con LoadArgs) y lo ejecuta en lugar de este."></Quiz>

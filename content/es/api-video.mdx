@@ -1,0 +1,77 @@
+# Vídeo: la GPU y sus niveles
+
+La pantalla de la máquina es una **GPU** simulada en `0xFF400000` (slot `0x40`). Lee lo que
+muestra de la **VRAM** en `0xA0000000` y la recorre línea a línea, una vez por fotograma; el
+programa nunca dibuja en la ventana. La GPU tiene **niveles**:
+
+| Nivel | Nombre | Añade |
+| --- | --- | --- |
+| V0 | Terminal | Un plano de texto (celdas 8×16, fuente y paleta en VRAM, cursor) — ver [Texto](/wiki/api-text) |
+| V1 | Framebuffer | Un plano bitmap y un motor de copia — ver [Framebuffer](/wiki/api-fb) |
+| V2 | Retro 2D | 4 capas de tiles, una capa afín, 128 sprites, 16 paletas, una tabla de líneas (implementado) |
+| V3–V6 | Arcade/vectorial/3D | Previstos (F10–F15); `Caps` dice qué niveles hay |
+
+El terminal virtual de un programa que solo imprime ya usa V0 sin saberlo.
+
+## Registros del núcleo
+
+| Offset | Registro | Acceso | Significado |
+| --- | --- | --- | --- |
+| `0x000` | `Id` | R | `0x55504743` (`"CGPU"`) |
+| `0x004` | `Version` | R | mayor << 16 \| menor |
+| `0x008` | `Caps` | R | b0–6 niveles disponibles; b8–15 formatos; b31 ejecutor hardware |
+| `0x00C` | `VramSize` | R | La VRAM en bytes |
+| `0x010` | `GpuClockHz` | R | El reloj de la GPU |
+| `0x014` | `Mode` | RW | El nivel en uso, 0–6 (recortado al de la máquina) |
+| `0x018` | `MaxLevel` | R | El nivel más alto que permite el perfil |
+| `0x01C` | `Control` | RW | b0 pantalla activa; b1 procesador de comandos; b2 reset de la GPU |
+| `0x020` | `Status` | R | b0 copia ocupada; b1 fallo; b2 en VBlank; b3 flip pendiente |
+| `0x024` | `IrqEnable` | RW | b0 VBlank (32), b1 línea (33), b2 copia (34), b3 fallo (35) |
+| `0x028` | `IrqStatus` | W1C | Los mismos bits, escribe 1s para limpiarlos |
+| `0x02C` | `FaultCode` | R | 1 dirección de motor fuera de rango; 2 la CPU escribió en VRAM fuera del VBlank |
+| `0x030` | `FaultAddress` | R | La dirección que falló |
+| `0x100` | `Width` | RW | Píxeles, ≤ la resolución máxima del perfil |
+| `0x104` | `Height` | RW | |
+| `0x108` | `Refresh` | R | 60, o 50 con `--refresh 50` |
+| `0x10C` | `LinesTotal` | R | `Height + 45`, al menos 262 |
+| `0x110` | `VCount` | R | La línea que se está recorriendo |
+| `0x114` | `LineCompare` | RW | IRQ 33 cuando el recorrido llega a esta línea |
+| `0x118` | `FrameCounter` | R | VBlanks desde el arranque |
+| `0x11C` | `BackgroundColor` | RW | `0x00RRGGBB`, detrás de todo plano |
+| `0x120` | `Present` | W | `1`: aplica las bases pendientes y hace flip en el siguiente VBlank |
+
+## Fotogramas y el VBlank
+
+En cada VBlank la GPU termina el fotograma recién recorrido, aplica lo que pidió un `Present`,
+cuenta el fotograma (lanzando la IRQ 32 si está activa) y avisa al host para mostrarlo. Un
+programa que quiere una imagen por fotograma dibuja en el búfer trasero, escribe `1` en
+`Present` y espera el blank (`halt` con la IRQ 32, o que cambie `FrameCounter`).
+
+```c
+#include "ceres/video.h"
+
+video_init(320, 240);                 // la pantalla; el Mode arranca en V0
+video_set_mode(VIDEO_MODE_V1);        // plano bitmap
+video_present();
+video_wait_vblank();
+```
+
+| Función | Qué hace |
+| --- | --- |
+| `video_init(w, h)` | Fija el tamaño de la pantalla |
+| `video_set_mode(level)` | Elige V0…V6 |
+| `video_level()` | El nivel actual |
+| `video_present()` | Aplica las bases pendientes en el siguiente blank |
+| `video_wait_vblank()` | Bloquea hasta el siguiente VBlank |
+| `video_frames()` | El contador de fotogramas |
+| `video_line()` | La línea que se recorre |
+
+<Callout type="info" title="Todo está envuelto">
+Las cabeceras de `ceres/` envuelven cada registro en funciones: `ceres/video.h`, `ceres/text.h`,
+`ceres/fb.h`, `ceres/tiles.h` y `ceres/sprite.h`. Esta página es para entender qué hay debajo.
+</Callout>
+
+<Quiz question="¿Qué nivel usa un programa que solo imprime?"
+  options="V0|V1|V2|V3"
+  answer="0"
+  explain="V0 es el plano de texto, donde dibuja el terminal virtual; un programa que solo imprime lo usa sin saberlo."></Quiz>

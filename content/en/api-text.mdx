@@ -1,0 +1,63 @@
+# `ceres/text.h` — the text plane (V0)
+
+The **text plane** is a grid of 8×16 cells in VRAM, drawn in front of everything else. It is
+not a scrolling console: it is a board redrawn whole, ideal for text games, roguelikes and
+menus. The virtual terminal draws in the same plane when the program prints.
+
+The module keeps its own copy of the grid in RAM, draws into that, and `text_present()` puts it
+on the screen in one go and waits for the vertical blank, so a frame never appears half drawn.
+
+```c
+#include "ceres/text.h"
+
+if (text_init(40, 20) != 0)     // columns, rows (at most the screen's: 80x30 at 640x480)
+{
+    puts("no screen");
+    return 1;
+}
+text_shutdown();                // frees the grid; the terminal's cursor shows again
+```
+
+## Drawing
+
+```c
+text_clear(' ');                  // fill the grid
+text_put(x, y, '@');              // one cell (Latin-1 byte)
+text_text(x, y, "Hola ñandú");    // UTF-8; '\n' drops a row
+text_printf(x, y, "HP %d", hp);   // formatted (at most 255 characters)
+text_hline(x, y, len, '-');
+text_vline(x, y, len, '|');
+text_rect(x, y, w, h, '#');       // outline
+text_fill(x, y, w, h, '.');
+text_box(x, y, w, h);             // frame with the box characters
+text_copy(dx, dy, sx, sy, w, h);  // copy a region
+text_scroll(1);                   // scroll up one row
+text_present();                   // show the frame and wait for the VBlank
+```
+
+## Per-cell colour
+
+Each cell has a colour attribute (one byte). `0` means the terminal's own colours.
+
+```c
+text_set_attr(TEXT_ATTR(TEXT_BRIGHT + TEXT_YELLOW, TEXT_BLACK));
+text_text(1, 1, "Title");
+
+text_put_attr(10, 10, '@', TEXT_ATTR(TEXT_WHITE, TEXT_BLUE));
+unsigned char a = text_get_attr(10, 10);
+```
+
+Colours: `TEXT_BLACK TEXT_RED TEXT_GREEN TEXT_YELLOW TEXT_BLUE TEXT_MAGENTA TEXT_CYAN
+TEXT_WHITE`, plus `TEXT_BRIGHT` to add brightness. `TEXT_ATTR(ink, bg)` packs them; a
+background of `TEXT_BLACK` lets what is behind show through.
+
+<Callout type="tip" title="The plane and the keys">
+In a window the keys arrive on the keyboard device; without one, the first `key_start()` asks
+the host to deliver them as they are pressed. The `irq` module is not needed for `key_wait()`:
+it blocks on the device.
+</Callout>
+
+<Quiz question="What does an attribute of TEXT_NORMAL (0) mean in a cell?"
+  options="Black on black|The terminal's own colours|Invisible|Error"
+  answer="1"
+  explain="Attribute 0 leaves the cell with the terminal's default colours instead of forcing a pair."></Quiz>

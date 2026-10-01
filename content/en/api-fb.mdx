@@ -1,0 +1,48 @@
+# `ceres/fb.h` — the pixel framebuffer (V1)
+
+The **bitmap plane** is a picture behind the text, in VRAM, shown when `Mode` is 1 or more.
+It is double (or triple) buffered: you draw on the back buffer, `fb_present()` swaps the buffers
+at the next vertical blank and waits for it.
+
+```c
+#include "ceres/fb.h"
+
+if (fb_init(320, 240) != 0)     // the screen and a 320x240 picture, 0x00RRGGBB; 0 ok, -1 if refused
+{
+    puts("no screen");
+    return 1;
+}
+fb_clear(0x00102040);           // the back buffer, XRGB8888
+fb_present();                   // swaps and waits for the VBlank
+fb_shutdown();                  // the plane off; the screen back to text only
+```
+
+<Callout type="info" title="Indexed or true colour">
+`fb_init_indexed(w, h)` gives a byte-a-pixel picture through a palette
+(`fb_set_palette`, `fb_load_palette`); `fb_indexed()` reports which one. The formats are I1,
+I2, I4, I8, RGB565, ARGB1555, XRGB8888 and ARGB8888.
+</Callout>
+
+## Reference
+
+| Function | What it does |
+| --- | --- |
+| `fb_init(w, h)` / `fb_init_indexed(w, h)` | Sets up the plane; `0` ok, `-1` when refused |
+| `fb_shutdown()` | Turns the plane off |
+| `fb_width()` / `fb_height()` | The picture's size (`0` before `fb_init`) |
+| `fb_indexed()` | `1` for `fb_init_indexed` |
+| `fb_present()` | Swaps the buffers at the next VBlank and waits |
+| `fb_keep()` | Copies the frame just shown into the buffer to draw into |
+| `fb_clear(value)` | Fills the back buffer with a colour or an index |
+| `fb_blit(pixels)` | Copies a whole picture from RAM into it (the copy engine) |
+| `fb_set_palette(i, rgb)` / `fb_load_palette(colors, n)` | The indexed palette |
+| `fb_scroll(x, y)` | The plane's scroll, taken modulo the size |
+
+The **copy engine** (`0x280`–`0x294`) does full-buffer moves and fills without the CPU:
+`fb_clear` and `fb_blit` use it. It is busy for 16 GPU cycles plus one per 4 bytes and raises
+interrupt 34 when it finishes.
+
+<Quiz question="When does fb_present() show the frame you just drew?"
+  options="Immediately|At the next vertical blank, after swapping the buffers|When the program ends|On the next keypress"
+  answer="1"
+  explain="fb_present swaps the buffers at the next vertical blank and waits for it, so a frame is never shown half drawn."></Quiz>

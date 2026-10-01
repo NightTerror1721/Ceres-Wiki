@@ -1,0 +1,66 @@
+# Memoria y mapa de direcciones
+
+El espacio físico de 32 bits de la máquina tiene tres cosas: la **RAM** desde `0x00000000`,
+hasta 2 GiB; la **VRAM** desde `0xA0000000`, hasta 1 GiB; y los **dispositivos** en los 16 MiB
+de arriba, desde `0xFF000000`. Todo lo demás está vacío.
+
+<Include file="_memory-map.mdx" />
+
+## Tamaño
+
+```cpp
+DefaultSize = 64 MiB;   // el del perfil standard
+MaxSize     = 2 GiB;    // todo 0x00000000-0x7FFFFFFF
+MinSize     = 8 KiB;
+```
+
+Cuánta RAM y VRAM tiene una máquina es cosa de su **perfil**: `standard` tiene 64 MiB de RAM y
+32 MiB de VRAM; `micro` tiene 64 KiB y 32 KiB; `custom` hasta 2 GiB y 1 GiB. `--ram` y `--vram`
+lo cambian. Ambas son páginas enteras de 4 KiB (la RAM desde 8 KiB, la VRAM desde 16 KiB).
+
+**Ninguna le cuesta al host lo que no usa.** Ambas se reservan como páginas que leen a cero y se
+vuelven memoria real la primera vez que se escriben (`VirtualAlloc` en Windows, `mmap` en el
+resto). Una máquina de 2 GiB ejecutando un programa pequeño ocupa unos pocos MiB.
+
+## El mapa de RAM
+
+| Rango | Contenido |
+| --- | --- |
+| `0x00000000`–`0x000000FF` | Tabla de vectores de interrupción: 64 entradas × 4 bytes. La 0 es el vector de reset |
+| `0x00000100`–`0x000003FF` | BIOS: un manejador por defecto de cada vector que apaga la máquina (estado 1) |
+| `0x00000400`– | `.text`, `.rodata`, `.data`, `.bss`, luego heap y pila |
+
+## Protección
+
+- La **tabla de vectores y el BIOS** (`< 0x400`) son de solo lectura: un almacenamiento que los
+  solapa lanza `MemoryFault`.
+- **`.text` es de solo lectura**: una escritura que lo solape lanza `MemoryFault`, así un
+  puntero perdido falla donde ocurre en vez de corromper una instrucción luego.
+- Una carga o almacenamiento **pasado el final de la RAM** lanza `MemoryFault` (`OutOfRam`), no
+  un cero silencioso.
+
+## Alineación
+
+Las variables se rellenan a su alineación natural: 1 para `u8`, 2 para `u16`, 4 para
+`u32`/`f32` y también para `u64`/`i64`/`f64` (pares de registros, igual que en memoria). Un
+acceso desalineado de 16 o 32 bits lanza `AlignmentFault`.
+
+## La pila
+
+`sp` arranca en lo alto de la RAM menos los 4 KiB de **pila del sistema** (`sp = tamaño - 4 KiB`),
+donde corren los manejadores de interrupción, así un fallo se puede informar aunque la pila del
+programa haya desbordado. Un programa cargado empieza un poco más abajo: sus argumentos se
+colocan arriba como en una implementación de C con anfitrión, y `r0`/`r1`/`r2` llevan
+`argc`/`argv`/`envp`. Empujar por debajo del **límite de pila** lanza `StackOverflow`; el límite
+sube con el heap (`malloc` lo sube), así una pila que baja al heap también falla.
+
+<Callout type="info" title="La VRAM también es memoria">
+La VRAM admite toda carga y almacenamiento que admite la RAM (8/16/32/64 bits), las
+instrucciones de bloque y la DMA; el código también corre desde ella. Es la GPU quien la lee
+(ver las páginas de vídeo).
+</Callout>
+
+<Quiz question="¿Qué hace un almacenamiento pasado el final de la RAM?"
+  options="Se lee de vuelta como cero|Lanza MemoryFault (OutOfRam)|Da la vuelta|Se descarta en silencio"
+  answer="1"
+  explain="Una carga o almacenamiento pasado el final de la RAM es un MemoryFault con FaultReason OutOfRam; no es un cero silencioso."></Quiz>

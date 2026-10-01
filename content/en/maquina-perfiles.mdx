@@ -1,0 +1,77 @@
+# The machine's clock and profiles
+
+The machine keeps its own time. Nothing it does depends on how fast the host is: the CPU
+counts **cycles**, every clock a program can read is derived from them, devices act on
+**events scheduled in cycles**, and the host only decides how long a run takes in real time -
+never what the machine sees. That is what makes tests, recordings and the debugger's step
+back possible.
+
+## Cycles
+
+Every instruction costs a fixed number of cycles, counted in a 64-bit counter:
+
+<Include file="_cycles.mdx" />
+
+The table lives in `libs/core/include/ceres/core/isa/cycles.h`. The costs model the simulated
+machine, not the host (on the host a division costs what an addition does).
+
+## Clock and time
+
+The **CPU clock** turns cycles into time: the profile's, 50 MHz by default. At 50 MHz a cycle
+is 20 ns. From the cycle count the timer derives the nanoseconds and milliseconds since the
+machine started, and the **real-time clock** (seconds since 1970: where the machine's time
+started, the host's clock or `--rtc`, plus the machine's time since).
+
+## Events and halt
+
+A device that acts on its own (the timer's countdown, a DMA transfer completing) schedules an
+**event** at an absolute cycle and is called back when the clock reaches it. There is no
+per-instruction call: the CPU loop compares its cycle count with the next event once per
+instruction. A **halted** machine executes nothing and its clock jumps straight to the next
+event; with nothing scheduled, only the host can wake it.
+
+## Pace
+
+`ceres run --speed` says how machine time meets host time:
+
+| `--speed` | The host… |
+| --- | --- |
+| `realtime` | waits whenever the machine is ahead (default while a window is open) |
+| `max` | never waits (default without a window) |
+| `<f>x` (`0.5x`, `2x`…) | keeps `f` machine seconds to one of its own |
+
+## Profiles
+
+A machine is one of eight profiles. The profile fixes its clocks, its memory and the most it
+offers in video and sound; the audio level takes effect as the sound devices arrive (F9 on).
+
+<Include file="_profiles.mdx" />
+
+`ceres run --profile <name>` picks one. Any of the other machine options starts from that
+profile and turns it into `custom`:
+
+| Option | Takes |
+| --- | --- |
+| `--cpu-clock`, `--gpu-clock` | cycles per second with an optional `k`, `M` or `G` (of 1000): `8M`, `400000000` |
+| `--ram`, `--vram` | bytes with an optional `K`, `M` or `G` (of 1024), a multiple of 4 KiB: `64K`, `128M` |
+| `--max-video`, `--max-audio` | a level: `V0`–`V6`, `A0`–`A4` |
+| `--max-resolution` | `<width>x<height>`: `1920x1080` |
+
+```text
+ceres run game.cres --profile retro           # 16 MHz, 2 MiB, 320x240
+ceres run game.cres --profile retro --ram 4M  # custom: retro with 4 MiB of RAM
+ceres run demo.cres --max-resolution 1920x1080  # custom: standard at full HD
+```
+
+<Callout type="tip" title="1920×1080 is custom-only">
+No profile other than `custom` goes past 1280×720. A value past what `custom` allows is
+refused before the machine starts, with the range it must be in.
+</Callout>
+
+A program reads which machine it is on from the system control device: `ProfileId`
+(`0xFFFF0028`), `CpuClockHz` (`0x24`), `MemorySize` (`0x04`) and `VramSize` (`0x38`).
+
+<Quiz question="Which profile does the machine use by default?"
+  options="micro|retro|standard|workstation"
+  answer="2"
+  explain="standard: 50 MHz CPU, 64 MiB of RAM, 1280×720."></Quiz>

@@ -16,13 +16,13 @@ Ceres no es una librería suelta: son **tres proyectos que encajan**.
 
 | Proyecto | Qué es | Qué aporta |
 |---|---|---|
-| **CeresASM** | La máquina virtual | Procesador de 32 bits, 183 instrucciones, dispositivos MMIO, depurador con ejecución inversa |
-| **Ceres-C** | El compilador | C (C89 + `long long` + C11/C23 parcial) que produce ensamblador legible |
+| **CeresASM** | La máquina virtual | Un procesador de 32 bits con ISA nativa de 64 bits sobre pares de registros, dispositivos MMIO, relojes y perfiles, una shell, un depurador con ejecución inversa |
+| **Ceres-C** | El compilador | C (C89 + `long long` + `double` + C11/C23 parcial) que produce ensamblador legible |
 | **Ceres STDLIB** | La librería estándar | `stdio`, `stdlib`, `math`, gráficos, sonido, ficheros, estructuras de datos… |
 
 El flujo es **C → CASM → objeto → programa**, y todo el entorno es **determinista**: el
-reloj de la máquina cuenta instrucciones, así que el mismo programa hace exactamente lo
-mismo en cada ejecución.
+tiempo de la máquina es virtual y cuenta ciclos, así que el mismo programa hace exactamente
+lo mismo en cada ejecución, en cualquier host.
 
 ## Juega un poco antes de empezar
 

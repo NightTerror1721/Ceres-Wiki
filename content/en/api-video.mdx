@@ -1,0 +1,78 @@
+# Video: the GPU and its levels
+
+The machine's screen is a simulated **GPU** at `0xFF400000` (slot `0x40`). It reads what it
+shows from the **VRAM** at `0xA0000000` and scans it line by line, once a frame; the program
+never draws on the window itself. The GPU has **levels**:
+
+| Level | Name | Adds |
+| --- | --- | --- |
+| V0 | Terminal | A text plane (8×16 cells, font and palette in VRAM, cursor) — see [Text](/wiki/api-text) |
+| V1 | Framebuffer | A bitmap plane and a copy engine — see [Framebuffer](/wiki/api-fb) |
+| V2 | Retro 2D | 4 tile layers, an affine layer, 128 sprites, 16 palettes, a line table (implemented) |
+| V3–V6 | Arcade/vector/3D | Planned (F10–F15); `Caps` says which levels there are |
+
+The virtual terminal of a program that just prints already uses V0 without knowing it.
+
+## Core registers
+
+| Offset | Register | Access | Meaning |
+| --- | --- | --- | --- |
+| `0x000` | `Id` | R | `0x55504743` (`"CGPU"`) |
+| `0x004` | `Version` | R | major << 16 \| minor |
+| `0x008` | `Caps` | R | b0–6 levels available; b8–15 bitmap formats; b31 a hardware executor |
+| `0x00C` | `VramSize` | R | The VRAM in bytes |
+| `0x010` | `GpuClockHz` | R | The GPU clock |
+| `0x014` | `Mode` | RW | The level in use, 0–6 (clamped to the machine's) |
+| `0x018` | `MaxLevel` | R | The highest level the profile allows |
+| `0x01C` | `Control` | RW | b0 display on; b1 command processor; b2 reset the GPU |
+| `0x020` | `Status` | R | b0 copy busy; b1 fault; b2 in VBlank; b3 flip pending |
+| `0x024` | `IrqEnable` | RW | b0 VBlank (32), b1 line (33), b2 copy (34), b3 fault (35) |
+| `0x028` | `IrqStatus` | W1C | The same bits, write 1s to clear |
+| `0x02C` | `FaultCode` | R | 1 engine address out of range; 2 CPU threw at VRAM outside VBlank |
+| `0x030` | `FaultAddress` | R | The address that faulted |
+| `0x100` | `Width` | RW | Screen pixels, ≤ the profile's largest |
+| `0x104` | `Height` | RW | |
+| `0x108` | `Refresh` | R | 60, or 50 with `--refresh 50` |
+| `0x10C` | `LinesTotal` | R | `Height + 45`, at least 262 |
+| `0x110` | `VCount` | R | The line being scanned |
+| `0x114` | `LineCompare` | RW | IRQ 33 when the scan reaches this line |
+| `0x118` | `FrameCounter` | R | Vertical blanks since the start |
+| `0x11C` | `BackgroundColor` | RW | `0x00RRGGBB`, behind every plane |
+| `0x120` | `Present` | W | `1`: apply the pending bases and flip at the next VBlank |
+
+## Frames and the vertical blank
+
+At every vertical blank the GPU finishes the frame just scanned, applies what a `Present` asked
+for, counts the frame (raising IRQ 32 if enabled) and tells the host to show it. A program that
+wants one picture a frame draws into the back buffer, writes `1` to `Present` and waits for the
+blank (`halt` with IRQ 32, or `FrameCounter` changing).
+
+```c
+#include "ceres/video.h"
+
+video_init(320, 240);                 // the screen; Mode comes up at V0
+video_set_mode(VIDEO_MODE_V1);        // bitmap plane
+video_present();
+video_wait_vblank();
+```
+
+| Function | What it does |
+| --- | --- |
+| `video_init(w, h)` | Sets the screen size |
+| `video_set_mode(level)` | Chooses V0…V6 |
+| `video_level()` | The current level |
+| `video_present()` | Applies the pending bases at the next blank |
+| `video_wait_vblank()` | Blocks until the next vertical blank |
+| `video_frames()` | The frame counter |
+| `video_line()` | The line being scanned |
+
+<Callout type="info" title="Everything is wrapped">
+The `ceres/` headers wrap each register in functions: `ceres/video.h`, `ceres/text.h`,
+`ceres/fb.h`, `ceres/tiles.h` and `ceres/sprite.h`. This page is for understanding what is
+underneath.
+</Callout>
+
+<Quiz question="Which level does a program that only prints use?"
+  options="V0|V1|V2|V3"
+  answer="0"
+  explain="V0 is the text plane, which the virtual terminal draws on; a program that just prints uses it without knowing."></Quiz>

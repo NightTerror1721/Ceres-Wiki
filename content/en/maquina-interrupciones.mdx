@@ -1,0 +1,43 @@
+# Interrupts and exceptions
+
+The machine has **64 vectors**. **Exceptions** (1–15) are delivered always; **device
+interrupts** (16–63) only with interrupts enabled. The library names them in `interrupts.h`,
+and its handlers are declared with `__interrupt` and bound with `__interrupt_vector`. The full
+tables and the exact v2 numbers are in [Reference: interrupts](/wiki/ref-interrupciones).
+
+## What each number is
+
+- **1–7, 15** — `Trap`, `IllegalInstruction`, `MemoryFault`, `DivisionByZero`,
+  `StackOverflow`, `AlignmentFault`, `PageFault`, `Syscall`.
+- **16–35** — the devices: timer (16/17), DMA (18), terminal (19), keyboard (20), mouse (21),
+  gamepad (22), disk/hostfs/peripherals (24–26), audio (28–30), GPU (32–35).
+
+<Callout type="warn" title="One owner per vector">
+The linker allows a single binding per vector in the whole program. The optional modules
+`irq`, `fault` and `mmu` bind vectors, so if you write your own handler for a vector, do
+**not** link the module that also owns it. See [Interrupts and faults](/wiki/sys-irq-fault).
+</Callout>
+
+## Handling them at run time
+
+The `irq` module owns the device vectors once and dispatches to functions you register:
+
+```c
+// USE: irq
+#include "ceres/irq.h"
+
+static void on_keyboard(int irq) { (void)irq; got_key = 1; }
+
+irq_attach(IRQ_KEYBOARD, on_keyboard);   // 16-35
+irq_enable();
+/* ... */
+irq_detach(IRQ_KEYBOARD);
+```
+
+`irq_save()`/`irq_restore()` are critical sections; `irq_wait()` is an atomic `sti` + `halt`
+that wakes on any request a device raises.
+
+<Quiz question="How many owners does the linker allow per interrupt number?"
+  options="One|Two|64|None"
+  answer="0"
+  explain="A single binding per vector in the whole program; that is why optional modules are chosen with // USE:."></Quiz>

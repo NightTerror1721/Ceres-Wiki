@@ -1,0 +1,64 @@
+# `ceres/text.h` — el plano de texto (V0)
+
+El **plano de texto** es una rejilla de celdas de 8×16 en la VRAM, dibujada delante de todo lo
+demás. No es una consola que hace scroll: es un tablero redibujado entero, ideal para juegos de
+texto, roguelikes y menús. El terminal virtual dibuja en el mismo plano cuando el programa
+imprime.
+
+El módulo guarda su propia copia de la rejilla en RAM, dibuja en ella, y `text_present()` la
+pone en pantalla de una vez y espera al VBlank, así un fotograma nunca aparece a medias.
+
+```c
+#include "ceres/text.h"
+
+if (text_init(40, 20) != 0)     // columnas, filas (como mucho las de la pantalla: 80x30 a 640x480)
+{
+    puts("sin pantalla");
+    return 1;
+}
+text_shutdown();                // libera la rejilla; el cursor del terminal vuelve a verse
+```
+
+## Dibujar
+
+```c
+text_clear(' ');                  // rellena la rejilla
+text_put(x, y, '@');              // una celda (byte Latin-1)
+text_text(x, y, "Hola ñandú");    // UTF-8; '\n' baja una fila
+text_printf(x, y, "HP %d", hp);   // formateado (como mucho 255 caracteres)
+text_hline(x, y, len, '-');
+text_vline(x, y, len, '|');
+text_rect(x, y, w, h, '#');       // contorno
+text_fill(x, y, w, h, '.');
+text_box(x, y, w, h);             // marco con los caracteres de caja
+text_copy(dx, dy, sx, sy, w, h);  // copia una región
+text_scroll(1);                   // sube una fila
+text_present();                   // muestra el fotograma y espera el VBlank
+```
+
+## Color por celda
+
+Cada celda tiene un atributo de color (un byte). `0` significa los colores propios del terminal.
+
+```c
+text_set_attr(TEXT_ATTR(TEXT_BRIGHT + TEXT_YELLOW, TEXT_BLACK));
+text_text(1, 1, "Título");
+
+text_put_attr(10, 10, '@', TEXT_ATTR(TEXT_WHITE, TEXT_BLUE));
+unsigned char a = text_get_attr(10, 10);
+```
+
+Colores: `TEXT_BLACK TEXT_RED TEXT_GREEN TEXT_YELLOW TEXT_BLUE TEXT_MAGENTA TEXT_CYAN
+TEXT_WHITE`, más `TEXT_BRIGHT` para añadir brillo. `TEXT_ATTR(ink, fondo)` los empaqueta; un
+fondo `TEXT_BLACK` deja ver lo que hay detrás.
+
+<Callout type="tip" title="El plano y las teclas">
+En una ventana las teclas llegan por el dispositivo de teclado; sin ella, el primer
+`key_start()` pide al host que las entregue según se pulsan. El módulo `irq` no hace falta para
+`key_wait()`: bloquea en el dispositivo.
+</Callout>
+
+<Quiz question="¿Qué significa un atributo TEXT_NORMAL (0) en una celda?"
+  options="Negro sobre negro|Los colores propios del terminal|Invisible|Error"
+  answer="1"
+  explain="El atributo 0 deja la celda con los colores por defecto del terminal en vez de forzar un par."></Quiz>

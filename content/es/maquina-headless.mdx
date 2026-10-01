@@ -1,0 +1,60 @@
+# Headless, grabación y CI
+
+Ceres está construido para que la ejecución de un programa sea **reproducible** y su salida
+**capturable**, que es lo que hace posible el test automático. El tiempo de la máquina es
+virtual y su entrada va sellada con el ciclo en que entró, así la misma entrada produce siempre
+la misma salida, en cualquier host y a cualquier `--speed`.
+
+## Sin ventana
+
+```bash
+ceres run game.cres --headless      # sin ventana; el terminal sigue funcionando, en una pantalla que nadie ve
+```
+
+`--headless` (o `CERES_HEADLESS=1`, o un build sin SDL) no abre ninguna ventana. El terminal
+virtual sigue funcionando; el host guarda lo que el programa escribió si se lo pides:
+
+| Opción | Qué escribe |
+| --- | --- |
+| `--transcript <fichero>` | Cada byte escrito al terminal, en orden; los del flujo de error, entre `ESC[E` y `ESC[e` |
+| `--screen-log <fichero>` | El plano de texto como texto plano, una sección `--- present N ---` en cada `Present` |
+| `--frames <dir>` | Un PNG por `Present` |
+| `--log <fichero>` | El registro de depuración y los diagnósticos del host |
+
+<Output title="Ejecución headless típica">
+> ceres run hello.cres --headless --transcript out.txt
+> type out.txt
+hello, ceres
+</Output>
+
+## Entrada guionizada
+
+| Opción | Qué hace |
+| --- | --- |
+| `--type <fichero>` | Teclea un fichero en el terminal como si fuera el teclado (fin de línea es Enter) |
+| `--keys <fichero>` | Pulsa teclas en instantes del tiempo de la máquina (`<ms> down\|up\|press <tecla>`) |
+
+## Grabar y reproducir
+
+Todo lo que el host da a la máquina va sellado con el ciclo en que entró:
+
+- `--record <fichero>` escribe esos sellos, una línea por evento;
+- `--replay <fichero>` los devuelve en los mismos ciclos y no lee ninguna entrada del host.
+
+Una reproducción es la ejecución grabada, haga lo que haga el host ahora o sea lo rápida que sea.
+
+## En un test
+
+```bash
+ceres run test.cres --headless --speed max --transcript got.txt
+diff got.txt expected.txt
+```
+
+Como el tiempo de la máquina es virtual y acelerable (`--speed max`), un test que tardaría
+segundos en tiempo real termina en milisegundos, y sus bytes son los mismos siempre. Así
+funcionan los propios tests de la librería estándar.
+
+<Quiz question="¿Por qué una ejecución headless se puede comparar byte a byte?"
+  options="Porque no usa entrada|Porque el tiempo de la máquina es virtual y la entrada va sellada por ciclo|Porque corre a --speed realtime|No se puede"
+  answer="1"
+  explain="El tiempo virtual más la entrada sellada por ciclo hacen la ejecución determinista: la misma entrada da los mismos bytes de salida, a cualquier velocidad."></Quiz>

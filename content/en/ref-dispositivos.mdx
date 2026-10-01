@@ -1,0 +1,48 @@
+# Reference: devices
+
+The machine reaches every device through **memory-mapped I/O (MMIO)**: ordinary loads and
+stores into a window at the top of the address space, from `0xFF000000`. There is no port
+I/O. `ceres`'s `MmioBus` holds up to **256 slots of 64 KiB** and routes each access to the
+device that claims it; a slot with no device reads all ones and discards writes.
+
+Every device register is **32 bits** and takes an **aligned 32-bit** access only
+(`ldr`/`str`, `fldr`/`fstr`). A byte or halfword access to a register is `MemoryFault`
+(`MmioWidth`), a misaligned one `AlignmentFault`.
+
+## Slots
+
+<Include file="_device-slots.mdx" />
+
+Each device's register table is on its own page (System, Timer, DMA, Debug log, Keyboard,
+Mouse, Gamepad, Audio, Disk, HostFs, Peripherals, GPU).
+
+## System control (`0xFFFF0000`)
+
+| Offset | Register | Access | What it does |
+| --- | --- | --- | --- |
+| `0x00` | `Command` | W | Low byte: 1 shut down, 2 reset, **3 load and run** (`LoadPath`). Next byte: exit status |
+| `0x04` | `MemorySize` | R | `RamSize` |
+| `0x08` | `Features` | RW | b0 divide-by-zero faults, b1 IEEE divide |
+| `0x0C` | `StackLimit` | RW | The stack may not go below this |
+| `0x10` | `FaultAddress` | R | Address of the last fault |
+| `0x14` | `FaultAccess` | R | b0–7 kind (read/write/fetch), b8–31 size |
+| `0x18`/`0x1C`/`0x20` | `ArgumentCount`/`ArgumentVector`/`Environment` | R | `argc`/`argv`/`envp` |
+| `0x24` | `CpuClockHz` | R | CPU frequency |
+| `0x28` | `ProfileId` | R | 0 `micro` … 5 `standard`, 6 `workstation`, 7 `custom` |
+| `0x2C` | `FaultReason` | R | See the table below |
+| `0x30` | `LoadPath` | W | RAM address of a HostFs path to run (command 3) |
+| `0x34` | `LoadArgs` | W | RAM address of `{argc, argv, envp}` for command 3, or 0 |
+| `0x38` | `VramSize` | R | `VramSize` |
+
+## Fault reasons (`FaultReason`)
+
+<Include file="_fault-reasons.mdx" />
+<Callout type="info" title="Read and write only, 32 bits at a time">
+There is no `mmio_r8`/`mmio_r16` or `read_port` any more (lint:v1): the machine's registers are
+32-bit and every access is a full word. From C, `mmio_r32()` and `mmio_w32()` in `ceres.h`.
+</Callout>
+
+<Quiz question="What does a 16-bit store to a device register do?"
+  options="Writes the low half|Writes the high half|Raises MemoryFault (MmioWidth)|Nothing"
+  answer="2"
+  explain="MMIO is 32-bit only: a byte or halfword access to a register faults with MmioWidth."></Quiz>

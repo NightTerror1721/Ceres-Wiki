@@ -1,0 +1,13 @@
+| Code | Name | When |
+| --- | --- | --- |
+| 0 | `None` | — |
+| 1 | `Alignment` | Misaligned access to RAM or VRAM |
+| 2 | `OutOfRam` | Address below `0xA0000000` past `RamSize` |
+| 3 | `OutOfVram` | VRAM address past `VramSize` |
+| 4 | `Unmapped` | The empty regions of the map |
+| 5 | `MmioWidth` | MMIO access that is not 32-bit or is misaligned |
+| 6 | `MmioBlock` | Block instruction on MMIO |
+| 7 | `MmioUndeclared` | Undeclared offset with `--strict-mmio` |
+| 8 | `RegisterPair` | Bad register pair in a 64-bit instruction |
+| 9 | `UnknownOpcode` | Unassigned opcode |
+| 10 | `BadSubfield` | Invalid subfield (e.g. `fcvt` type 14 or 15) |

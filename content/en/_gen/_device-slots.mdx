@@ -1,0 +1,15 @@
+| Slot | Base | Device | IRQ |
+| --- | --- | --- | --- |
+| `0x00` | `0xFF000000` | Virtual terminal | 19 |
+| `0x01` | `0xFF010000` | Timer | 16, 17 |
+| `0x02` | `0xFF020000` | DMA | 18 |
+| `0x03` | `0xFF030000` | Debug log | — |
+| `0x10` | `0xFF100000` | Keyboard | 20 |
+| `0x11` | `0xFF110000` | Mouse | 21 |
+| `0x12` | `0xFF120000` | Gamepad | 22 |
+| `0x20–0x23` | `0xFF200000` | Audio (control, voices, sequencer, streams) | 28–30 |
+| `0x30` | `0xFF300000` | Disk | 24 |
+| `0x31` | `0xFF310000` | HostFs | 25 |
+| `0x32` | `0xFF320000` | Peripheral ports | 26 |
+| `0x40–0x43` | `0xFF400000` | GPU (core/screen, commands, 2D, 3D) | 32–35 |
+| `0xFF` | `0xFFFF0000` | System control | — |

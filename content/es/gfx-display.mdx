@@ -1,68 +1,67 @@
-# Display de píxeles
+# Pantalla de píxeles
 
-El **display** es un framebuffer de píxeles RGB32 (`0x00RRGGBB`), hasta **1280×720**.
-Distinto del framebuffer de texto. Un fotograma se envía de una vez y el anfitrión lo
-muestra en una ventana (o se ignora si no hay ventana, así que el programa sigue siendo
-testeable).
+El **plano bitmap** (`ceres/fb.h`) es una imagen de píxeles RGB32 (`0x00RRGGBB`), hasta la
+resolución máxima del perfil (1280×720), detrás del plano de texto. Tiene **doble búfer**:
+dibujas en el búfer trasero, `fb_present()` intercambia en el siguiente VBlank y espera a él,
+así un fotograma nunca se muestra a medias. Referencia completa: [ceres/fb.h](/wiki/api-fb).
 
 ## Lo básico
 
 ```c
 #include "ceres/fb.h"
 
-display_size(320, 200);      // 0 si lo acepta (esto limpia)
-display_clear();             // pinta negro y rebobina el cursor
-display_put(RGB(255, 0, 0)); // un píxel desde el cursor
-display_show();              // presenta
+if (fb_init(320, 200) != 0)   // 0 ok, -1 si se niega
+    return 1;
+fb_clear(0x00000000);         // pinta el búfer trasero de negro
+fb_present();                 // intercambia y espera el VBlank
 ```
 
-`RGB(r,g,b)` empaqueta tres canales en un pixel. `display_width()` / `display_height()`
-consultan el tamaño.
+`fb_width()` / `fb_height()` leen el tamaño; `fb_shutdown()` apaga el plano.
 
 ## Enviar un fotograma entero
 
 ```c
-unsigned int* pixeles = /* w*h palabras */;
-display_blit(pixeles, 320, 200);   // ajusta el tamaño, limpia y envía en UNA transferencia
-display_show();
+unsigned int* pixeles = /* w*h palabras, 0x00RRGGBB */;
+fb_blit(pixeles);             // una imagen entera desde la RAM, por el motor de copia
+fb_present();
 ```
 
-<Callout type="info" title="Sin vsync: tú marcas el ritmo">
-El display no sincroniza verticalmente. Con ventana, el anfitrión ejecuta la máquina a
-trozos de instrucciones y muestra el fotograma entre trozos. El ritmo lo pone **cuántas
-instrucciones gastas por fotograma**, por eso el bucle de juego acompaña.
+<Callout type="info" title="VBlank, o tú llevas el ritmo">
+`fb_present()` espera al **VBlank**, así los fotogramas nunca se rasgan. El ritmo lo pone
+cuánto tardas en construir cada fotograma; con `--speed realtime` un segundo de máquina es un
+segundo.
 </Callout>
 
-## El modo indexado y el scroll
+## Modo indexado, paletas y scroll
 
-Dos toques "retro": un pixel = **un byte** (índice a una paleta de 256 colores), y un
-desplazamiento que mueve lo presentado sin volver a dibujar.
+Dos toques "retro": un píxel es **un byte** (un índice a una paleta), y un desplazamiento mueve
+lo mostrado sin redibujar.
 
 ```c
-display_set_mode(DISP_MODE_INDEXED);      // 1 byte por pixel
+fb_init_indexed(320, 200);          // un byte por píxel
 
 unsigned int paleta[256];
 for (int i = 0; i < 256; i++)
     paleta[i] = color_hsv(i * 360 / 256, 255, 255);
-display_load_palette(paleta, 256);
+fb_load_palette(paleta, 256);
 
 unsigned char indices[320 * 200];
-/* ... rellenar ... */
-display_blit8(indices, 320, 200);
+/* ... rellena ... */
+fb_blit(indices);
+fb_present();
 
-display_scroll(5, 0);      // el fondo se mueve 5 px a la izquierda
+fb_scroll(5, 0);                    // la imagen se mueve 5 px a la izquierda, módulo el tamaño
 ```
 
 <Callout type="tip" title="Por qué importa">
-El modo indexado usa **un cuarto** de la memoria y, cambiando una entrada de la paleta,
-cambias el color en todos los píxeles que la usan de golpe. El scroll mueve un fondo
-estrellado o un mapa sin redibujarlo.
+El modo indexado usa **un cuarto** de la memoria y, cambiando una entrada de paleta, cambias el
+color de todos los píxeles que la usan a la vez.
 </Callout>
 
 ## Cómo lo usa `gfx`
 
-Para dibujo cómodo (líneas, círculos, sprites), usa **`gfx`**, que mantiene una superficie
-en RAM y la envía de una vez por ti:
+Para dibujar cómodo (líneas, círculos, sprites), usa **`gfx`**, que guarda una superficie en
+RAM y te la envía de una vez:
 
 ```c
 #include "ceres/gfx.h"
@@ -75,36 +74,9 @@ for (;;) {
 }
 ```
 
-Lo vemos a fondo en **Dibujo 2D con gfx**.
+Lo cubrimos en profundidad en **Dibujo 2D con gfx**.
 
-## Un patrón de prueba
-
-```c
-#include "stdio.h"
-#include "ceres/fb.h"
-#include "ceres/color.h"
-
-int main(void)
-{
-    display_size(256, 192);
-    display_clear();
-    for (int y = 0; y < 192; y++)
-        for (int x = 0; x < 256; x++)
-            display_put(RGB(x, y, (x ^ y) & 255));
-    display_show();
-
-    getchar();     // espera una tecla para que no cierre al instante
-    return 0;
-}
-```
-
-<Callout type="warn" title="El bloque va antes de presentar">
-`display_blit` **no** presenta: limpia y envía el fotograma. Llama a `display_show()`
-después. Y el cursor de escritura secuencial sólo se rebobina con `display_clear` o con un
-cambio de tamaño.
-</Callout>
-
-<Quiz question="¿Qué formato tiene un píxel del display?"
-  options="0xAARRGGBB|0x00RRGGBB|Un byte de paleta siempre|0x00BBGGRR"
+<Quiz question="¿Qué formato tiene un píxel en color verdadero?"
+  options="0xAARRGGBB|0x00RRGGBB|Siempre un byte de paleta|0x00BBGGRR"
   answer="1"
-  explain="En modo RGB32 es 0x00RRGGBB (el byte alto se ignora); en modo indexado es un byte de paleta."></Quiz>
+  explain="XRGB8888 es 0x00RRGGBB (el byte alto se ignora); en modo indexado un píxel es un byte de paleta."></Quiz>

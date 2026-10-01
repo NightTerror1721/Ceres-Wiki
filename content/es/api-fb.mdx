@@ -1,0 +1,48 @@
+# `ceres/fb.h` — el framebuffer de píxeles (V1)
+
+El **plano bitmap** es una imagen tras el texto, en la VRAM, que se muestra cuando `Mode` es 1 o
+más. Tiene doble (o triple) búfer: dibujas en el búfer trasero y `fb_present()` intercambia los
+búferes en el siguiente VBlank y espera a él.
+
+```c
+#include "ceres/fb.h"
+
+if (fb_init(320, 240) != 0)     // la pantalla y una imagen de 320x240, 0x00RRGGBB; 0 ok, -1 si se niega
+{
+    puts("sin pantalla");
+    return 1;
+}
+fb_clear(0x00102040);           // el búfer trasero, XRGB8888
+fb_present();                   // intercambia y espera el VBlank
+fb_shutdown();                  // el plano fuera; la pantalla vuelve a solo texto
+```
+
+<Callout type="info" title="Indexado o color verdadero">
+`fb_init_indexed(w, h)` da una imagen de un byte por píxel a través de una paleta
+(`fb_set_palette`, `fb_load_palette`); `fb_indexed()` dice cuál es. Los formatos son I1, I2, I4,
+I8, RGB565, ARGB1555, XRGB8888 y ARGB8888.
+</Callout>
+
+## Referencia
+
+| Función | Qué hace |
+| --- | --- |
+| `fb_init(w, h)` / `fb_init_indexed(w, h)` | Prepara el plano; `0` ok, `-1` si se niega |
+| `fb_shutdown()` | Apaga el plano |
+| `fb_width()` / `fb_height()` | El tamaño de la imagen (`0` antes de `fb_init`) |
+| `fb_indexed()` | `1` para `fb_init_indexed` |
+| `fb_present()` | Intercambia los búferes en el siguiente VBlank y espera |
+| `fb_keep()` | Copia el fotograma recién mostrado al búfer donde dibujar |
+| `fb_clear(valor)` | Rellena el búfer trasero con un color o un índice |
+| `fb_blit(pixels)` | Copia una imagen entera de la RAM (el motor de copia) |
+| `fb_set_palette(i, rgb)` / `fb_load_palette(colors, n)` | La paleta indexada |
+| `fb_scroll(x, y)` | El scroll del plano, tomado módulo el tamaño |
+
+El **motor de copia** (`0x280`–`0x294`) hace movimientos y rellenos de búfer entero sin la CPU:
+`fb_clear` y `fb_blit` lo usan. Está ocupado 16 ciclos de GPU más uno por cada 4 bytes y lanza
+la interrupción 34 al terminar.
+
+<Quiz question="¿Cuándo muestra fb_present() el fotograma que acabas de dibujar?"
+  options="Inmediatamente|En el siguiente VBlank, tras intercambiar los búferes|Cuando el programa termina|En la siguiente pulsación"
+  answer="1"
+  explain="fb_present intercambia los búferes en el siguiente VBlank y espera a él, así un fotograma nunca se muestra a medias."></Quiz>

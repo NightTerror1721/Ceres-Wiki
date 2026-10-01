@@ -1,0 +1,81 @@
+# The shell and loading programs
+
+A program can hand the machine over to another program, and `ceres run` can put a **shell** in
+front of everything: start the machine, get a prompt, move through the host directory and run
+programs from it, as on a home computer. The machine side is small - one command of the system
+control device - and the shell itself is an ordinary program of the C library
+(`shell/shell.c`).
+
+## Loading from inside the machine: command 3
+
+The system control device has two write-only registers and a command:
+
+| Offset | Register | Meaning |
+| --- | --- | --- |
+| `0x30` | `LoadPath` | RAM address of a NUL-terminated path in the host directory: the `.cres` to run |
+| `0x34` | `LoadArgs` | RAM address of three words - `argc`, the address of `argv`, the address of `envp` - or `0` |
+| `0x00` | `Command` | `3`: load the program at `LoadPath` and run it in place of this one |
+
+```casm
+la   r1, path              // "games/snake.cres"
+str  [r13 + 0x30], r1      // r13 = 0xFFFF0000
+la   r1, block             // { 2, argv, 0 }
+str  [r13 + 0x34], r1
+li   r1, 3
+str  [r13 + 0x00], r1      // the last instruction of this program - unless the load fails
+```
+
+What happens, in order:
+
+1. The store reads the path and the block from RAM **at once** (up to 4095-byte strings, 256
+   arguments and as many environment entries).
+2. The host resolves the path the way HostFs does (relative, nothing outside the host
+   directory), reads the `.cres` and checks it fits the machine with its arguments.
+3. If all is well, the instruction after the store never runs: the machine restarts **as on a
+   reset**, with the new image. The new program gets `argv` from the block and the environment
+   from `envp` (or the running program's environment when `envp` is `0`).
+4. If anything fails, **the program goes on after its store**, as `execve` returns; the log says
+   why.
+
+The C library wraps it: `sys_run(path, argc, argv, envp)` in `ceres/sys.h`, which flushes stdio
+first and returns `-1` only when the load failed.
+
+## `--shell` and `ceres run` without a program
+
+```bash
+ceres run                        # the shell, from <CERES_PATH>/shell/shell.cres
+ceres run --profile micro        # the small shell: <CERES_PATH>/shell/shell-small.cres
+ceres run game.cres --shell      # game.cres first, then the shell
+```
+
+- **The shell** is `shell/shell.cres` where Ceres is installed (`CERES_PATH`, or beside
+  `ceres`). With no shell, `ceres run` says where it looked and exits with status 1.
+- **The shell that fits.** An install directory has two: `shell.cres` (about 90 KB of RAM) and
+  `shell-small.cres` (about 53 KB), so even `micro` (64 KiB) has a shell. `ceres` takes the
+  first that fits.
+- When a program ends, the shell is loaded again; `argv` is the shell's path and the environment
+  is the program's with `CERES_STATUS=<its status>`, so the shell learns how it ended.
+
+## The shell commands
+
+| Command | What it does |
+| --- | --- |
+| `help [command]` | The commands, or one of them |
+| `ls [dir]` | Files (with sizes) and directories in a directory, or one file |
+| `cd [dir]` | Changes directory; `cd` alone goes to the top of the host directory |
+| `cat <file>...` | Shows what files hold |
+| `run <file> [args]` | Runs a `.cres` with those arguments, then comes back |
+| `clear` | Clears the screen |
+| `mem` | The RAM and how much is free, and the VRAM |
+| `time` | The date and time (UTC) and uptime |
+| `info` | Profile, CPU clock, memory, video level and resolution, terminal size |
+| `reset` | Resets the machine (command 2) |
+| `exit [status]` | Ends the shell, and with it the run |
+
+Ctrl+C at the prompt drops the line; Ctrl+D on an empty line ends the shell. Errors go to the
+error stream in the error colour.
+
+<Quiz question="Which system-control command loads and runs another program?"
+  options="1|2|3|4"
+  answer="2"
+  explain="Command 3: load the program at LoadPath (with LoadArgs) and run it in place of this one."></Quiz>

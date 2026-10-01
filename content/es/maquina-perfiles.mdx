@@ -1,0 +1,78 @@
+# El reloj y los perfiles de la máquina
+
+La máquina lleva su propio tiempo. Nada de lo que hace depende de lo rápida que sea el host:
+la CPU cuenta **ciclos**, cada reloj que un programa puede leer se deriva de ellos, los
+dispositivos actúan sobre **eventos programados en ciclos**, y el host solo decide cuánto tarda
+una ejecución en tiempo real — nunca lo que la máquina ve. Eso es lo que hace posibles los
+tests, las grabaciones y el paso atrás del depurador.
+
+## Ciclos
+
+Cada instrucción cuesta un número fijo de ciclos, contados en un contador de 64 bits:
+
+<Include file="_cycles.mdx" />
+
+La tabla vive en `libs/core/include/ceres/core/isa/cycles.h`. Los costes modelan la máquina
+simulada, no el host (en el host una división cuesta lo mismo que una suma).
+
+## Reloj y tiempo
+
+El **reloj de CPU** convierte ciclos en tiempo: el del perfil, 50 MHz por defecto. A 50 MHz un
+ciclo son 20 ns. Del contador de ciclos, el temporizador deriva los nanosegundos y milisegundos
+desde el arranque, y el **reloj de tiempo real** (segundos desde 1970: dónde arrancó el tiempo
+de la máquina, el reloj del host o `--rtc`, más el tiempo de la máquina desde entonces).
+
+## Eventos y halt
+
+Un dispositivo que actúa solo (la cuenta atrás del temporizador, un DMA que termina) programa un
+**evento** en un ciclo absoluto y recibe la llamada cuando el reloj lo alcanza. No hay llamada
+por instrucción: el bucle de la CPU compara su contador de ciclos con el del próximo evento una
+vez por instrucción. Una máquina **detenida** no ejecuta nada y su reloj salta directo al
+siguiente evento; sin nada programado, solo el host puede despertarla.
+
+## Ritmo
+
+`ceres run --speed` dice cómo se encuentran el tiempo de la máquina y el del host:
+
+| `--speed` | El host… |
+| --- | --- |
+| `realtime` | espera cuando la máquina va por delante (por defecto con ventana) |
+| `max` | no espera nunca (por defecto sin ventana) |
+| `<f>x` (`0.5x`, `2x`…) | mantiene `f` segundos de máquina por uno suyo |
+
+## Perfiles
+
+Una máquina es uno de ocho perfiles. El perfil fija sus relojes, su memoria y lo máximo que
+ofrece en vídeo y sonido; el nivel de audio entra en vigor según llegan los dispositivos de
+sonido (F9 en adelante).
+
+<Include file="_profiles.mdx" />
+
+`ceres run --profile <nombre>` elige uno. Cualquier otra opción de máquina parte de ese perfil y
+lo convierte en `custom`:
+
+| Opción | Toma |
+| --- | --- |
+| `--cpu-clock`, `--gpu-clock` | ciclos por segundo con `k`, `M` o `G` opcional (de 1000): `8M`, `400000000` |
+| `--ram`, `--vram` | bytes con `K`, `M` o `G` opcional (de 1024), múltiplo de 4 KiB: `64K`, `128M` |
+| `--max-video`, `--max-audio` | un nivel: `V0`–`V6`, `A0`–`A4` |
+| `--max-resolution` | `<ancho>x<alto>`: `1920x1080` |
+
+```text
+ceres run game.cres --profile retro           # 16 MHz, 2 MiB, 320x240
+ceres run game.cres --profile retro --ram 4M  # custom: retro con 4 MiB de RAM
+ceres run demo.cres --max-resolution 1920x1080  # custom: standard a full HD
+```
+
+<Callout type="tip" title="1920×1080 solo con custom">
+Ningún perfil que no sea `custom` pasa de 1280×720. Un valor por encima de lo que permite
+`custom` se rechaza antes de arrancar la máquina, con el rango en que debe estar.
+</Callout>
+
+Un programa lee en qué máquina está desde el dispositivo de control del sistema: `ProfileId`
+(`0xFFFF0028`), `CpuClockHz` (`0x24`), `MemorySize` (`0x04`) y `VramSize` (`0x38`).
+
+<Quiz question="¿Qué perfil usa la máquina por defecto?"
+  options="micro|retro|standard|workstation"
+  answer="2"
+  explain="standard: CPU a 50 MHz, 64 MiB de RAM, 1280×720."></Quiz>

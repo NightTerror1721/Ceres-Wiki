@@ -26,7 +26,7 @@ for (const locale of availableLocales()) {
 }
 
 for (const locale of availableLocales()) {
-  for (const q of ['tilemap', 'save game', 'interruptions', 'void']) {
+  for (const q of ['tilemap', 'save game', 'terminal', 'void']) {
     const r = search(locale, q);
     if (r.length === 0 && q !== 'save game') console.log(`  [${locale}] search "${q}": 0 results`);
   }

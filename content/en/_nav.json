@@ -24,6 +24,18 @@
       ]
     },
     {
+      "title": "The machine",
+      "icon": "🖥️",
+      "pages": [
+        { "slug": "maquina-memoria", "title": "Memory and the address map" },
+        { "slug": "maquina-perfiles", "title": "Clock and profiles" },
+        { "slug": "maquina-interrupciones", "title": "Interrupts and exceptions" },
+        { "slug": "maquina-shell", "title": "The shell and loading programs" },
+        { "slug": "maquina-terminal", "title": "The virtual terminal" },
+        { "slug": "maquina-headless", "title": "Headless, recording and CI" }
+      ]
+    },
+    {
       "title": "The Ceres-C language",
       "icon": "🧩",
       "pages": [
@@ -57,6 +69,15 @@
         { "slug": "lib-varios", "title": "Ctype, locale, signals and setjmp" },
         { "slug": "lib-unicode", "title": "Unicode: UTF-8 and wchar" },
         { "slug": "lib-float", "title": "Float and double" }
+      ]
+    },
+    {
+      "title": "The Ceres API",
+      "icon": "🧰",
+      "pages": [
+        { "slug": "api-video", "title": "Video: the GPU and its levels" },
+        { "slug": "api-text", "title": "ceres/text.h: the text plane" },
+        { "slug": "api-fb", "title": "ceres/fb.h: the framebuffer" }
       ]
     },
     {
@@ -148,7 +169,9 @@
       "icon": "📖",
       "pages": [
         { "slug": "ref-cheatsheet", "title": "Cheat sheet" },
-        { "slug": "ref-apendice", "title": "Appendix: devices" }
+        { "slug": "ref-dispositivos", "title": "Devices" },
+        { "slug": "ref-interrupciones", "title": "Interrupts" },
+        { "slug": "ref-apendice", "title": "Appendix: registers and ABI" }
       ]
     }
   ]

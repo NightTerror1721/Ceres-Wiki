@@ -1,0 +1,46 @@
+# Referencia: interrupciones y excepciones
+
+La máquina tiene **64 vectores**. Las **excepciones** (1–15) se entregan siempre; las
+**interrupciones de dispositivo** (16–63) se entregan solo con las interrupciones activas
+(`sti`).
+
+<Callout type="warn" title="Los números de la v2 no son los de la v1">
+Si conocías la tabla antigua, los números del terminal, la DMA y el teclado se movieron: el
+terminal ahora es el **19**, el temporizador el **16/17**, el teclado el **20** y la GPU el
+**32–35**. Toma los números de aquí o de `interrupts.h`, nunca de memoria.
+</Callout>
+
+## Excepciones
+
+<Include file="_exceptions.mdx" />
+
+## Interrupciones de dispositivo
+
+<Include file="_interrupts.mdx" />
+
+## Enganchar un manejador
+
+Los manejadores se declaran con `__interrupt` y se enganchan con `__interrupt_vector`, **una
+vez** en todo el programa:
+
+```c
+#include "interrupts.h"
+
+__interrupt void mi_timer(void)
+{
+    /* corto: sin printf, sin malloc */
+}
+
+__interrupt_vector(IRQ_TIMER, mi_timer);
+```
+
+<Callout type="warn" title="Un dueño por vector">
+El enlazador permite un solo enganche por vector en todo el programa. Los módulos opcionales
+`irq`, `fault` y `mmu` enganchan vectores, así que si escribes tu propio manejador para un
+vector, **no** enlaces el módulo que también lo posee. Pide uno con `// USE: irq`.
+</Callout>
+
+<Quiz question="¿Qué número tiene la interrupción de entrada del terminal en la v2?"
+  options="17|19|20|22"
+  answer="1"
+  explain="19: entrada disponible o Ctrl+C. El temporizador es 16/17 y el teclado 20."></Quiz>

@@ -9,29 +9,29 @@ para juegos de texto, roguelikes y menús.
 ```c
 #include "ceres/text.h"
 
-if (fb_init(40, 20) != 0)     // columnas, filas (hasta 200x100)
+if (text_init(40, 20) != 0)     // columnas, filas (hasta 200x100)
 {
     puts("no hay pantalla");
     return 1;
 }
-fb_shutdown();
+text_shutdown();
 ```
 
 ## Dibujar
 
 ```c
-fb_clear(' ');                 // llena la rejilla
-fb_put(x, y, '@');             // una celda
-fb_text(x, y, "Hola ñandú");   // UTF-8; '\n' baja una fila
-fb_printf(x, y, "HP %d", hp);  // con formato
-fb_hline(x, y, len, '-');
-fb_vline(x, y, len, '|');
-fb_rect(x, y, w, h, '#');      // contorno
-fb_fill(x, y, w, h, '.');
-fb_box(x, y, w, h);            // marco con + - |
-fb_copy(dx, dy, sx, sy, w, h); // copia de region
-fb_scroll(1);                  // sube una fila
-fb_present();                  // muestra el fotograma
+text_clear(' ');                 // llena la rejilla
+text_put(x, y, '@');             // una celda
+text_text(x, y, "Hola ñandú");   // UTF-8; '\n' baja una fila
+text_printf(x, y, "HP %d", hp);  // con formato
+text_hline(x, y, len, '-');
+text_vline(x, y, len, '|');
+text_rect(x, y, w, h, '#');      // contorno
+text_fill(x, y, w, h, '.');
+text_box(x, y, w, h);            // marco con + - |
+text_copy(dx, dy, sx, sy, w, h); // copia de region
+text_scroll(1);                  // sube una fila
+text_present();                  // muestra el fotograma
 ```
 
 ## Color por celda
@@ -39,26 +39,31 @@ fb_present();                  // muestra el fotograma
 Cada celda tiene un atributo de color (un byte). `0` significa los colores del terminal.
 
 ```c
-fb_set_attr(FB_ATTR(FB_BRIGHT + FB_YELLOW, FB_BLACK));
-fb_text(1, 1, "Título");
+text_set_attr(TEXT_ATTR(TEXT_BRIGHT + TEXT_YELLOW, TEXT_BLACK));
+text_text(1, 1, "Título");
 
-fb_put_attr(10, 10, '@', FB_ATTR(FB_WHITE, FB_BLUE));   // una celda propia
-unsigned char a = fb_get_attr(10, 10);
+text_put_attr(10, 10, '@', TEXT_ATTR(TEXT_WHITE, TEXT_BLUE));   // una celda propia
+unsigned char a = text_get_attr(10, 10);
 ```
 
-Colores: `FB_BLACK FB_RED FB_GREEN FB_YELLOW FB_BLUE FB_MAGENTA FB_CYAN FB_WHITE`, más
-`FB_BRIGHT` para sumar brillo. `FB_ATTR(fg, bg)` los empaqueta.
+Colores: `TEXT_BLACK TEXT_RED TEXT_GREEN TEXT_YELLOW TEXT_BLUE TEXT_MAGENTA TEXT_CYAN TEXT_WHITE`, más
+`TEXT_BRIGHT` para sumar brillo. `TEXT_ATTR(fg, bg)` los empaqueta.
 
 ## ¿Dónde se ve el fotograma?
 
-- Con ventana (SDL): se dibuja en una **ventana** con la fuente de mapa de bits, en color.
-- Sin ventana (`--headless`, o `CERES_HEADLESS=1`): se imprime como **texto** en la salida.
+El plano siempre lo dibuja la **GPU** (el plano de texto de V0). Con ventana (SDL) lo ves en
+pantalla; sin ella (`--headless`) se sigue componiendo y el host puede capturarlo:
 
-Puedes forzarlo en caliente:
+```bash
+ceres run rogue.cres --headless --screen-log frames.txt   # el plano como texto en cada Present
+ceres run rogue.cres --frames shots/                      # un PNG por fotograma
+```
+
+El tamaño de la rejilla se consulta en caliente:
 
 ```c
-fb_set_output(FB_OUT_TERMINAL);   // o FB_OUT_WINDOW, FB_OUT_AUTO
-int donde = fb_output();
+int cols = text_cols();
+int rows = text_rows();
 ```
 
 ## Un ejemplo: un roguelike mínimo
@@ -91,15 +96,15 @@ static void dibujar(void)
 {
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++)
-            fb_put(x, y, mapa[y][x]);
-    fb_put(px, py, '@');
-    fb_printf(0, 0, "pos %d,%d", px, py);
-    fb_present();
+            text_put(x, y, mapa[y][x]);
+    text_put(px, py, '@');
+    text_printf(0, 0, "pos %d,%d", px, py);
+    text_present();
 }
 
 int main(void)
 {
-    if (fb_init(W, H) != 0) return 1;
+    if (text_init(W, H) != 0) return 1;
     generar();
     key_start();
     for (;;)
@@ -115,7 +120,7 @@ int main(void)
         if (mapa[ny][nx] != '#') { px = nx; py = ny; }
     }
     key_stop();
-    fb_shutdown();
+    text_shutdown();
     return 0;
 }
 ```

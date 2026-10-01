@@ -6,23 +6,24 @@ La librería les pone nombre en `interrupts.h`.
 
 | Nº | Nombre | Origen |
 |---|---|---|
-| 0 | Reset | El programa se reinicia |
 | 1 | Trap | `__builtin_trap()` |
 | 2 | IllegalInstruction | Opcode inválido |
-| 3 | MemoryFault | Store a `.text`/página cero, acceso ilegal |
+| 3 | MemoryFault | Store a `.text`, la página cero o el BIOS, acceso fuera de rango |
 | 4 | DivisionByZero | División por cero (si está pedido) |
 | 5 | StackOverflow | La pila pasó su límite |
 | 6 | AlignmentFault | Acceso de 16/32 bits desalineado |
 | 7 | PageFault | Página no presente/permiso (con MMU) |
-| 16 | **Timer** | El temporizador expiró |
-| 17 | **Terminal** | Entrada disponible / fin de entrada |
+| 15 | Syscall | Una trampa de llamada al sistema |
+| 16 | **Timer** | Expiró la cuenta atrás |
+| 17 | **Alarma del timer** | Se alcanzó la hora de alarma |
 | 18 | **DMA** | Transferencia completada |
-| 19 | **Keyboard** | Un evento de tecla |
-| 20 | **Mouse** | Movimiento o botón |
-| 21 | **Gamepad** | Cambio de estado |
-| 22 | **Audio** | Un tono terminó |
-| 23 | **Periph** | Un medio se conectó o quitó |
-| 24 | **Alarm** | La alarma del temporizador |
+| 19 | **Terminal** | Entrada disponible / Ctrl+C |
+| 20 | **Teclado** | Un evento de tecla |
+| 21 | **Ratón** | Movimiento o botón |
+| 22 | **Gamepad** | Cambio de estado |
+| 24/25/26 | **Disco / HostFs / Periféricos** | Eventos de almacenamiento |
+| 28/29/30 | **Audio** | Fin de voz/cola, secuenciador, flujo |
+| 32–35 | **GPU** | VBlank, línea, copia, fallo |
 
 ## Manejadores
 

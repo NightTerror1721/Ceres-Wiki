@@ -6,23 +6,24 @@ user interrupts (delivered only with interrupts enabled). The library names them
 
 | No. | Name | Source |
 |---|---|---|
-| 0 | Reset | The program restarts |
 | 1 | Trap | `__builtin_trap()` |
 | 2 | IllegalInstruction | Invalid opcode |
-| 3 | MemoryFault | Store to `.text`/page zero, illegal access |
+| 3 | MemoryFault | Store to `.text`, the page zero or the BIOS, access out of range |
 | 4 | DivisionByZero | Division by zero (if requested) |
 | 5 | StackOverflow | The stack passed its limit |
 | 6 | AlignmentFault | Misaligned 16/32-bit access |
 | 7 | PageFault | Page not present/permission (with MMU) |
-| 16 | **Timer** | The timer expired |
-| 17 | **Terminal** | Input available / end of input |
+| 15 | Syscall | A syscall trap |
+| 16 | **Timer** | The countdown expired |
+| 17 | **Timer alarm** | The alarm time was reached |
 | 18 | **DMA** | Transfer complete |
-| 19 | **Keyboard** | A key event |
-| 20 | **Mouse** | Movement or button |
-| 21 | **Gamepad** | State change |
-| 22 | **Audio** | A tone ended |
-| 23 | **Periph** | A medium was connected or removed |
-| 24 | **Alarm** | The timer's alarm |
+| 19 | **Terminal** | Input available / Ctrl+C |
+| 20 | **Keyboard** | A key event |
+| 21 | **Mouse** | Movement or button |
+| 22 | **Gamepad** | State change |
+| 24/25/26 | **Disk / HostFs / Peripherals** | Storage events |
+| 28/29/30 | **Audio** | Voice/queue end, sequencer, stream |
+| 32–35 | **GPU** | VBlank, line, copy, fault |
 
 ## Handlers
 

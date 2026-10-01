@@ -1,0 +1,12 @@
+| What | Cycles |
+| --- | --- |
+| ALU, `mov`, `li`, `lui`, logic, shifts, `cmp`, bit ops | 1 |
+| Load/store in RAM / VRAM / MMIO | 2 / 3 / 4 |
+| Conditional jump not taken / taken; `jp` | 1 / 2; 2 |
+| `call`, `ret`, `bl`, `enter`, `leave` | 3 |
+| `push`, `pop` | 2 |
+| `pushm`, `popm`, `fpushm`, `fpopm` | 1 + 2 per register |
+| `mul` family / `div`, `mod` family | 3 / 16 |
+| Float basics and conversions / `fdiv`, `fsqrt`, `fmod` / `fma` | 3 / 12 / 4 |
+| Block instruction (`mcpy`, `mset`, `mcmp`, `mscan`) | 4 + 1 per 8 bytes |
+| Entering an interrupt / `iret` | 12 / 6 |
