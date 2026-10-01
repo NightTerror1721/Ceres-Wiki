@@ -161,7 +161,8 @@
       "pages": [
         { "slug": "cli-ceres", "title": "The ceres CLI" },
         { "slug": "cli-ceresc", "title": "The ceresc CLI" },
-        { "slug": "cli-debugger", "title": "The debugger" }
+        { "slug": "cli-debugger", "title": "The debugger" },
+        { "slug": "cli-tools", "title": "Tools" }
       ]
     },
     {

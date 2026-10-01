@@ -1,0 +1,24 @@
+| Option | What it does |
+| --- | --- |
+| `--shell` | Go back to the shell whenever the program ends |
+| `--disk <image>` | A host file as the disk |
+| `--window` / `--headless` | Window or none (`CERES_HEADLESS=1` too) |
+| `--strict-mmio` | Fault on an undeclared device offset |
+| `--fullscreen` | Fill the screen (or F11) |
+| `--exit-on-halt` | Close the window as soon as the program ends |
+| `--frames <dir>` | A PNG of the screen at every `Present` |
+| `--refresh 50\|60` | Frames a second |
+| `--transcript <file>` | Everything the program wrote to its terminal |
+| `--screen-log <file>` | The screen as text at every `Present` |
+| `--type <file>` | Type a file as the machine starts |
+| `--keys <file>` | Press keys at instants of the machine's time |
+| `--gpu auto\|software\|hardware` | The GPU executor (only software so far) |
+| `--rtc <date>` | Start the real-time clock at that UTC moment |
+| `--speed realtime\|max\|<f>x` | Pace against the host's time |
+| `--record <file>` / `--replay <file>` | Sealed input in and out |
+| `--log <file>` | The debug log and the host diagnostics |
+| `--port <n>=<image>` | A stick on port n |
+| `--cart <n>=<file>` | A cartridge (read-only) on port n |
+| `--env <name>=<value>` | A program environment variable |
+| `--host-dir <dir>` | Root of the host files the program may see |
+| `-- <argument>...` | Everything after goes to the program |

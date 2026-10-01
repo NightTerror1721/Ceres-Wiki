@@ -1,0 +1,9 @@
+| Level | What it does |
+| --- | --- |
+| `-O0` | Every optimization off |
+| `-O1` | Everything except inlining (the default) |
+| `-O2` | Everything, inlining included |
+| `-O3` | Alias for `-O2` |
+| `-Os` | Size: no inlining, no jump tables |
+| `-Og` | Debugging: no inlining, no frame-slot reuse |
+| `-f<opt>` / `-fno-<opt>` | Turn one optimization on/off, over `-O` in argument order |

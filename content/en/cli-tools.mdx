@@ -1,0 +1,59 @@
+# Tools
+
+The standard library ships **tools** for building, testing and preparing assets. Most are
+Node.js scripts (run with `node`) or PowerShell scripts; the library build has both.
+
+## Build and test
+
+| Tool | What it does |
+| --- | --- |
+| `make` / `tools/mklib.ps1` | Builds the library at each level (`-O0`, `-O1`, `-O2`) into `build/lib/O*/libceres.car` |
+| `tools/runtests.ps1` / `tools/runtests.js` | Runs the test suite |
+| `tools/example.ps1 <name>` | Compiles and runs an example against the library |
+
+```shell
+> powershell -File tools/mklib.ps1
+> powershell -File tools/runtests.ps1
+> tools\example.ps1 snake --headless
+```
+
+## Assets
+
+| Tool | What it does |
+| --- | --- |
+| `tools/img2tiles.js` | A PNG into a palette, tiles and a map (`ceres/tiles.h`) or sprites (`ceres/sprite.h`), as C or CASM |
+| `tools/mkpack.js` | Builds a resource pack (`ceres/pack.h`) from files on the host |
+| `tools/gen_font.js` | Generates `src/ceres/font_data.inc` (the 8×8 font of `ceres/font.h`) |
+
+```shell
+> node tools/img2tiles.js level.png --tile 8 --bpp 4 -o level.h
+> node tools/img2tiles.js hero.png --sprites 16x16 -o hero.h
+> node tools/img2tiles.js level.png --asm -o level.casm
+> node tools/mkpack.js game.cart art levels
+```
+
+`mkpack` names each entry by its path relative to `--root`, with `/` between the parts, and
+LZ4-compresses each entry unless that does not help (or `--store` says not to try). The pack is
+padded to whole 512-byte sectors, so it can be plugged into a peripheral port as a cartridge:
+
+```shell
+> ceres run game.cres --cart 1=game.cart
+```
+
+## Generated tables
+
+| Tool | What it does |
+| --- | --- |
+| `tools/gen_tables.js` | The constant tables of `ceres/fixed.h` (sine) and `ceres/hash.h` (CRC-32) |
+| `tools/gen_math_tables.js`, `tools/gen_math64_tables.js` | Reference values for the math tests |
+| `tools/gendocs.js` | `docs/reference/`: one page per header, from the header itself |
+
+<Callout type="info" title="The headers are the documentation">
+`gendocs.js` turns each header's opening comment into prose and the rest into a C listing, so
+the reference cannot drift from the code. Run it after changing a header.
+</Callout>
+
+<Quiz question="Which tool turns a PNG into tiles and a map for the GPU's V2?"
+  options="mkpack.js|img2tiles.js|gen_font.js|gendocs.js"
+  answer="1"
+  explain="img2tiles.js cuts a picture into tiles (or sprites) and writes a palette, the tiles and a map as C or CASM."></Quiz>

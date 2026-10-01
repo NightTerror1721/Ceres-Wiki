@@ -1,7 +1,7 @@
 # The `ceres` CLI
 
-`ceres` is the virtual machine's tool: it assembles, links, archives, runs, disassembles,
-profiles and debugs Ceres programs.
+`ceres` is the machine's tool: it assembles, links, archives, runs, disassembles, profiles and
+debugs Ceres programs.
 
 ## General invocation
 
@@ -10,169 +10,92 @@ ceres <command> <file> [options]
 ceres <file>              # shorthand for "ceres run <file>"
 ```
 
-The **first token** selects the command if it is one of `asm`, `link`, `ar`, `run`, `disasm`,
-`debug`, `profile`; otherwise it is taken as the input file and the command is **`run`**.
+The **first token** selects the command if it is one of the commands below; otherwise it is
+taken as the input file and the command is **`run`**.
 
-| Command | For what |
-|---|---|
-| `asm` | Assemble and link `.casm` sources |
-| `link` | Link `.cobj` objects and `.car` archives |
-| `ar` | Create a `.car` archive from objects |
-| `run` | Run a `.cres` (or assemble and run a `.casm`) |
-| `disasm` | Disassemble a `.cres` or `.casm` |
-| `profile` | Run counting instructions per line |
-| `debug` | Interactive debugger |
+<Include file="_ceres-commands.mdx" />
 
 <Callout type="warn" title="Surprising details">
 - There is **no `--version`.**
 - `-h`/`--help` (and no arguments at all) prints usage to **stderr** and exits with status
-  **2**.
-- `ceres` prints **nothing** while running: the program's output goes to the terminal.
-- A file whose extension is exactly `.cres` is loaded as a binary; **any other** (`.casm`,
-  `.txt`, none) is assembled as CASM source.
+  **2** - not an error.
+- The program's output does **not** go to this terminal: it goes to the machine's **virtual
+  terminal** (see [The virtual terminal](/wiki/maquina-terminal)).
+- A file whose extension is exactly `.cres` is loaded as a binary; any other (`.casm`, `.txt`,
+  none) is assembled as CASM source.
 </Callout>
 
-## Common options
+## The machine options
 
-| Option | Commands | What it does |
-|---|---|---|
-| `-o`, `--output <path>` | `asm`, `link` | Output file |
-| `-c` | `asm` | Compile to a `.cobj` object |
-| `--listing` | `asm`, `run`, `profile` | Print the listing with addresses |
-| `--json` | `asm` | Diagnostics as JSON on stdout |
-| `--debug` | `asm`, `link`, `run`, `disasm` | Line and symbol tables |
-| `--emit-debug-json` | `asm`, `link`, `disasm` | Dump the debug tables as JSON |
-| `--symtab` | `link` | Symbol table between `__symtab_start`/`__symtab_end` |
-| `--ram <bytes>` | `run`, `debug`, `profile` | RAM (default **16 MiB**) |
-| `--disk <image>` | `run` | A host file as the disk |
-| `--port <n>=<img>` | `run` | A stick on port n |
-| `--cart <n>=<file>` | `run` | A cartridge (read-only) on port n |
-| `--host-dir <dir>` | `run` | Root of the host files |
-| `--env <name>=<value>` | `run` | Program environment variable |
-| `--window` / `--headless` | `run` | Window or terminal |
-| `--` | `run` | Everything after this belongs to the program |
+Every command that starts a machine (`run`, `profile`, `debug`) takes these. Each one starts
+from the chosen profile and turns it into `custom`.
 
-## `ceres asm` — assemble
+<Include file="_ceres-machine.mdx" />
+
+## `run`
+
+<Include file="_ceres-run.mdx" />
+
+```shell
+> ceres run hello.cres
+> ceres run game.cres --profile retro --disk save.img
+> ceres run game.casm --port 0=stick.img --cart 1=game.cart
+> ceres run shell.casm --host-dir ./sandbox -- --verbose input.txt
+> ceres run fb.casm --headless --screen-log frames.txt
+> ceres run            # no program: starts the shell
+```
+
+<Callout type="info" title="Window or not">
+With an SDL build and no `--headless`, the window opens **on the first presented frame**;
+`--window` makes a window that cannot be opened an error; `--headless` (or `CERES_HEADLESS`)
+opens none. Without a program, `run` starts the **shell** (see [The shell](/wiki/maquina-shell)).
+</Callout>
+
+## `asm`, `link`, `ar`
 
 ```
 ceres asm <source.casm>... [-o <out.cres>] [--listing] [--json] [--debug] [--emit-debug-json] [-c]
+ceres link <file.cobj|file.car>... -o <out.cres> [--debug] [--symtab] [--gc-sections]
+ceres ar <output.car> <file.cobj>...
 ```
 
-- With **several** sources, it assembles and links them into one program.
-- Without `-o`: it validates (assembles and links but discards the bytes); **no `main` needed**.
-- With `-o`: it requires an entry point (`main`).
-- `-c`: a single source, produces a `.cobj` **object** (no `main`).
+- `asm` with several sources assembles and links them together; without `-o` it validates (no
+  `main` needed); with `-c` it produces one `.cobj`.
+- `link` needs `-o` and a `main`; with `--gc-sections`, a member is pulled in only if it
+  resolves a name nothing else defines, and unreachable functions are dropped.
+- `ar` packs objects (and repacks `.car`s) into an archive.
 
 ```shell
 > ceres asm examples/main.casm -o hello.cres
 > ceres asm lib.casm -o lib.cobj -c
-> ceres asm a.casm b.casm -o prog.cres --debug
-> ceres asm prog.casm --listing
-> ceres asm broken.casm --json            # [{"file":…,"line":…,"severity":"error",…}]
+> ceres link main.cobj lib.car -o prog.cres --debug --symtab
+> ceres ar libstuff.car strings.cobj math.cobj
 ```
 
-## `ceres link` — link
-
-```
-ceres link <file.cobj|file.car>... -o <out.cres> [--debug] [--symtab]
-```
-
-It needs `-o` and a `main`. An archive member is pulled in only if it resolves a name nothing
-else defines.
-
-```shell
-> ceres link main.cobj lib.cobj -o prog.cres
-> ceres link main.cobj libstuff.car -o prog.cres --debug --symtab
-```
-
-## `ceres ar` — archive
-
-```
-ceres ar <out.car> <file.cobj>...
-```
-
-It needs an output and at least one object. It accepts `.cobj` and also `.car` (it repacks
-them).
-
-```shell
-> ceres ar libstuff.car strings.cobj math.cobj sort.cobj
-```
-
-## `ceres run` — run
-
-```
-ceres run <file.casm|file.cres> [--ram <bytes>] [--disk <img>] [--window | --headless]
-         [--port <n>=<img>]... [--cart <n>=<file>]... [--env <n>=<v>]... [--host-dir <dir>] [-- <args>]
-```
-
-```shell
-> ceres run hello.cres
-> ceres run game.cres --ram 33554432 --disk save.img
-> ceres run game.casm --port 0=stick.img --cart 1=game.cart
-> ceres run shell.casm --host-dir ./sandbox -- --verbose input.txt
-> ceres run fb.casm --headless      # text frames on the console
-> ceres run fb.casm --window        # needs an SDL build
-```
-
-<Callout type="info" title="Terminal or window">
-- `--window` opens the window (needs SDL); `--headless` never opens one.
-- With SDL and no `--headless`, the window opens **on the first presented frame**.
-- The **`CERES_HEADLESS`** variable (other than `""`, `"0"`, `"false"`) forces console mode.
-- `--window` outranks `CERES_HEADLESS`.
-</Callout>
-
-## `ceres disasm` — disassemble
+## `disasm`, `profile`, `debug`
 
 ```
 ceres disasm <file.casm|file.cres> [--debug]
+ceres profile <file.casm|file.cres> [<machine>]
+ceres debug <file.casm|file.cres> [<source2.casm> ...] [<machine>]
+                          [--no-stop-on-entry] [--server] [--no-history]
 ```
 
-It shows address, raw word and instruction. With `--debug` it annotates each word with your
-`file:line` (if the `.cres` was linked with debug info, or by assembling the `.casm` with it).
-
-```shell
-> ceres disasm hello.cres
-> ceres disasm main.casm --debug
-```
-
-## `ceres profile` — profile
-
-```
-ceres profile <file.casm|file.cres> [--ram <bytes>] [--listing]
-```
-
-It runs counting instructions per source line and lists them, sorted, on **stderr**.
-
-```shell
-> ceres profile examples/main.casm
-  N instructions executed
-       count      share  line
-```
-
-A `.cres` without debug information is rejected: assemble with `--debug`, or profile the
-`.casm` source directly.
-
-## `ceres debug` — debug
-
-```
-ceres debug <file.casm|file.cres> [<source2.casm> ...] [--ram <bytes>]
-            [--no-stop-on-entry] [--server] [--no-history]
-```
-
-It is the only command that accepts **several sources**. By default it stops before the first
-instruction. `--server` speaks NDJSON instead of a REPL. Covered in **The debugger**.
+- `disasm` shows address, raw word and instruction; `--debug` annotates each word with your
+  `file:line`.
+- `profile` reports instructions and **cycles** by function and by source line (a `.cres`
+  without debug info is rejected: assemble with `--debug`).
+- `debug` is the interactive debugger; `--server` speaks NDJSON instead of a REPL. See
+  [The debugger](/wiki/cli-debugger).
 
 ## Exit codes
 
 | Situation | Code |
-|---|---|
+| --- | --- |
 | Success (`asm`, `link`, `ar`, `disasm`, `profile`) | 0 |
 | Usage error, `-h`/`--help`, no args, unknown option | 2 |
 | File not found, assemble/link/run failure | 1 |
 | `run` completed | The status the program asks for (its low 8 bits) |
-
-The program's status is set by writing to the system-control device: command `1` shuts down;
-if a halfword/word is written, the next byte is the status.
 
 <Quiz question="What does `ceres prog.cres` with no subcommand do?"
   options="Assembles it|Runs it (equivalent to run)|Disassembles it|Nothing"

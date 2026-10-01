@@ -13,10 +13,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Regenerates the v2 tables and fails if the committed fragments are stale.
+      # Regenerates the generated tables and fails if the committed fragments are stale.
       - name: gen-tables
         run: |
           node tools/gen/gen-tables.mjs
+          node tools/gen/gen-cli.mjs
           git diff --exit-code content/en/_gen
       # Renders every page + content lint (v1 terms, es/en parity, links).
       - name: selfcheck

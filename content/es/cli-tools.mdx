@@ -1,0 +1,61 @@
+# Herramientas
+
+La librería estándar trae **herramientas** para construir, probar y preparar recursos. La
+mayoría son scripts de Node.js (con `node`) o de PowerShell; el build de la librería tiene los
+dos.
+
+## Construir y probar
+
+| Herramienta | Qué hace |
+| --- | --- |
+| `make` / `tools/mklib.ps1` | Construye la librería en cada nivel (`-O0`, `-O1`, `-O2`) en `build/lib/O*/libceres.car` |
+| `tools/runtests.ps1` / `tools/runtests.js` | Ejecuta la batería de tests |
+| `tools/example.ps1 <nombre>` | Compila y ejecuta un ejemplo contra la librería |
+
+```shell
+> powershell -File tools/mklib.ps1
+> powershell -File tools/runtests.ps1
+> tools\example.ps1 snake --headless
+```
+
+## Recursos
+
+| Herramienta | Qué hace |
+| --- | --- |
+| `tools/img2tiles.js` | Un PNG a una paleta, tiles y un mapa (`ceres/tiles.h`) o sprites (`ceres/sprite.h`), como C o CASM |
+| `tools/mkpack.js` | Construye un paquete de recursos (`ceres/pack.h`) a partir de ficheros del host |
+| `tools/gen_font.js` | Genera `src/ceres/font_data.inc` (la fuente 8×8 de `ceres/font.h`) |
+
+```shell
+> node tools/img2tiles.js level.png --tile 8 --bpp 4 -o level.h
+> node tools/img2tiles.js hero.png --sprites 16x16 -o hero.h
+> node tools/img2tiles.js level.png --asm -o level.casm
+> node tools/mkpack.js game.cart art levels
+```
+
+`mkpack` nombra cada entrada por su ruta relativa a `--root`, con `/` entre las partes, y
+comprime cada entrada con LZ4 salvo que eso no ayude (o que `--store` diga que no lo intente).
+El paquete se rellena a sectores enteros de 512 bytes, así se puede enchufar a un puerto de
+periférico como cartucho:
+
+```shell
+> ceres run game.cres --cart 1=game.cart
+```
+
+## Tablas generadas
+
+| Herramienta | Qué hace |
+| --- | --- |
+| `tools/gen_tables.js` | Las tablas constantes de `ceres/fixed.h` (seno) y `ceres/hash.h` (CRC-32) |
+| `tools/gen_math_tables.js`, `tools/gen_math64_tables.js` | Valores de referencia para los tests de matemáticas |
+| `tools/gendocs.js` | `docs/reference/`: una página por cabecera, desde la propia cabecera |
+
+<Callout type="info" title="Las cabeceras son la documentación">
+`gendocs.js` convierte el comentario inicial de cada cabecera en prosa y el resto en un listado
+C, así la referencia no se puede desincronizar del código. Ejecútalo tras cambiar una cabecera.
+</Callout>
+
+<Quiz question="¿Qué herramienta convierte un PNG en tiles y un mapa para el V2 de la GPU?"
+  options="mkpack.js|img2tiles.js|gen_font.js|gendocs.js"
+  answer="1"
+  explain="img2tiles.js corta una imagen en tiles (o sprites) y escribe una paleta, los tiles y un mapa como C o CASM."></Quiz>
