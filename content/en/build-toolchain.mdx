@@ -16,7 +16,9 @@ Projects/
    └─ Ceres STDLIB/     → the standard library
 ```
 
-With this layout, the library looks for `../../Ceres-C` and `../../CeresASM` automatically.
+With this layout it is easy to see where each build lands. The library does **not** look for
+its neighbours on its own: the tools are found by **`CERES`**/**`CERESC`**, by the
+**`CERES_PATH`** directory, or on the **`PATH`** (step 2).
 
 ## 1. Build all three, in order
 

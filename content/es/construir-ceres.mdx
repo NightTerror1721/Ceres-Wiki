@@ -1,0 +1,97 @@
+# Construir Ceres desde el código
+
+**CeresBinaries** construye y empaqueta Ceres entero — la máquina, el compilador, la librería
+estándar y la shell — en instaladores para Windows, Linux y macOS. Úsalo cuando quieras un
+**paquete**; para construir solo una pieza para desarrollar, mira la sección *Construir Ceres*.
+
+## Clonarlo
+
+```sh
+git clone --recursive https://github.com/NightTerror1721/Ceres-Binaries.git
+```
+
+Los tres repositorios son **submódulos** git bajo `sources/`, fijados a los commits con los que
+se construye un paquete. En un clon sin ellos, `git submodule update --init` (los scripts de
+build también lo hacen cuando faltan las fuentes).
+
+## Windows
+
+CMake 3.28+, Ninja, git y GCC con C++23 en el `PATH` (el `mingw64` de MSYS2):
+
+```bat
+powershell -ExecutionPolicy Bypass -File build.ps1            :: dist\ceres-<version>-windows-x64.zip y -setup.exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -Prebuilt  :: ... y los copia a prebuilt\windows-x64
+```
+
+Los ejecutables se enlazan **estáticamente** (no necesitan DLL de MinGW); `ceres` con la ventana
+SDL3, que el CMake de CeresASM descarga y construye (`SDL3.dll` va a su lado). El programa de
+instalación es el de Inno Setup cuando `ISCC.exe` está instalado (`package/windows/ceres.iss`,
+con una entrada en Configuración ▸ Aplicaciones para desinstalarlo); si no, se hace con IExpress,
+que todo Windows tiene, y ejecuta `install.ps1`.
+
+## Linux y macOS
+
+CMake 3.28+, GCC 13+ o Clang 17+, git, make o Ninja, y los ficheros de desarrollo que SDL3
+necesita (en Linux: X11 o Wayland, ALSA o PulseAudio):
+
+```sh
+./build.sh                  # dist/ceres-<version>-<platform>.tar.gz y -installer.sh
+./build.sh --prebuilt       # ... y los copia a prebuilt/<platform>
+./build.sh --no-sdl         # un ceres sin ventana
+```
+
+En Linux el runtime de C++ se enlaza dentro de los ejecutables, y SDL3 se enlaza estáticamente en
+ambos.
+
+## Usar otros checkouts
+
+Los dos scripts construyen cada repositorio, montan la instalación en
+`build/<platform>/stage/Ceres` y corren una **prueba de humo** desde ahí antes de empaquetar:
+`package/smoke/hello.c` compilado con `--stdlib` y ejecutado (sin `CERES_PATH`), y la shell
+arrancada y cerrada. Otros checkouts pueden sustituir a los submódulos:
+
+```bat
+powershell -ExecutionPolicy Bypass -File build.ps1 -CeresAsm <dir> -CeresC <dir> -Stdlib <dir>
+```
+```sh
+./build.sh --ceres-asm <dir> --ceres-c <dir> --stdlib <dir>
+```
+
+## Hacer un release
+
+<Steps>
+  <Step title="Fija los submódulos">
+    `git -C sources/CeresASM checkout <commit>` (y los demás), o
+    `git submodule update --remote` para los más nuevos.
+  </Step>
+  <Step title="Sube la versión">
+    Edita `VERSION`.
+  </Step>
+  <Step title="Empaqueta y commitea">
+    `build.ps1 -Prebuilt` (y `build.sh --prebuilt`), y luego commitea juntos los submódulos, la
+    versión y `prebuilt/`.
+  </Step>
+</Steps>
+
+## Estructura del repositorio
+
+| Ruta | Qué es |
+| --- | --- |
+| `build.ps1`, `build.sh` | Los builds: Windows, y Linux y macOS. |
+| `sources/` | Los tres repositorios, como submódulos. |
+| `package/windows/` | `install.ps1`/`install.cmd`, `uninstall.*` y `ceres.iss` para Inno Setup. |
+| `package/unix/` | `install.sh`, `uninstall.sh` y la cabecera del instalador autoextraíble. |
+| `package/smoke/` | La prueba de humo. |
+| `prebuilt/<platform>/` | Los paquetes del último release. |
+| `build/`, `dist/` | Lo que produce un build (no se guarda). |
+
+## ¿Solo las herramientas?
+
+Para construir los tres repositorios **a mano** (para desarrollar, sin empaquetar), mira
+[Construir la máquina virtual](/wiki/build-vm), [Construir el compilador](/wiki/build-ceresc),
+[Construir la librería estándar](/wiki/build-stdlib) y [Montar el toolchain](/wiki/build-toolchain).
+
+<Quiz question="¿Cómo se incluyen los tres repositorios en CeresBinaries?"
+  options="Como código copiado|Como submódulos git bajo sources/|Como paquetes NuGet|No se incluyen"
+  answer="1"
+  explain="sources/ contiene CeresASM, Ceres-C y Ceres STDLIB como submódulos, fijados a los commits con los que se construye un paquete."></Quiz>

@@ -6,7 +6,9 @@
       "icon": "🚀",
       "pages": [
         { "slug": "inicio", "title": "Bienvenido a Ceres" },
-        { "slug": "instalacion", "title": "Instalar y compilar" },
+        { "slug": "instalacion", "title": "Instalar Ceres" },
+        { "slug": "instalar-paquete", "title": "Instalar un paquete" },
+        { "slug": "construir-ceres", "title": "Construir desde el código" },
         { "slug": "hola-mundo", "title": "Hola, mundo" },
         { "slug": "anatomia", "title": "Anatomía de un programa" }
       ]

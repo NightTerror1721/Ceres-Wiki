@@ -6,7 +6,9 @@
       "icon": "🚀",
       "pages": [
         { "slug": "inicio", "title": "Welcome to Ceres" },
-        { "slug": "instalacion", "title": "Installing and building" },
+        { "slug": "instalacion", "title": "Installing Ceres" },
+        { "slug": "instalar-paquete", "title": "Installing a package" },
+        { "slug": "construir-ceres", "title": "Building from source" },
         { "slug": "hola-mundo", "title": "Hello, world" },
         { "slug": "anatomia", "title": "Anatomy of a program" }
       ]

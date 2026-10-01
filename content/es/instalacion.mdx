@@ -1,109 +1,77 @@
-# Instalar y compilar
+# Instalar Ceres
 
-Necesitas tres cosas: el **compilador** (`ceresc`), la **máquina** (`ceres`) y esta
-**librería estándar**. En un equipo de desarrollo se suelen tener los tres repositorios
-como hermanos:
+Para compilar y ejecutar programas Ceres necesitas tres cosas:
 
-```
-Projects/
-├─ CeresASM/        → de aquí sale ceres.exe
-├─ Ceres-C/         → de aquí sale ceresc.exe
-└─ Ceres Projects/
-   └─ Ceres STDLIB/ → esta librería
-```
+| Pieza | Herramienta | De |
+| --- | --- | --- |
+| La máquina y sus herramientas | `ceres` | CeresASM |
+| El compilador de C | `ceresc` | Ceres-C |
+| La librería estándar | `stdlib/` | Ceres STDLIB |
 
-## 1. Comprobar las herramientas
+Hay dos formas de conseguirlas.
 
-<Callout type="info" title="Buscando el binario">
-Los scripts de la librería buscan `ceresc`/`ceres` junto al checkout (`../../Ceres-C`,
-`../../CeresASM`) o por las variables de entorno **`CERESC`** y **`CERES_PATH`**.
+<Cards>
+  <Card title="Instalar un paquete" icon="📦" href="/wiki/instalar-paquete">Descarga un paquete ya hecho (Windows, Linux, macOS) y ejecuta el instalador.</Card>
+  <Card title="Construir desde el código" icon="🛠️" href="/wiki/construir-ceres">Clona CeresBinaries y constrúyelo entero, o construye los tres repositorios a mano.</Card>
+</Cards>
+
+## Cómo se encuentran las herramientas
+
+<Callout type="info" title="Cómo localizan ceresc y los scripts las herramientas">
+`ceresc` encuentra `ceres` en este orden: **`--ceres-path`**, el directorio **`CERES_PATH`**
+(donde está instalado Ceres), luego el **`PATH`**. Las variables de entorno con el nombre de una
+herramienta — **`CERES`**, **`CERESC`** — toman el ejecutable o su directorio. Los scripts de la
+librería siguen la misma regla.
 </Callout>
 
-```shell title="Comprobar que están en el PATH"
-> ceresc --version
-> ceres --help
+## Si tienes un paquete
+
+Tras instalar (o descomprimir) un paquete, un solo comando compila y ejecuta un programa contra la
+librería estándar, sin pasar rutas:
+
+```shell title="Compilar y ejecutar contra la librería instalada"
+> ceresc prog.c --stdlib -O2 --run
 ```
 
-## 2. Compilar la librería
+`--stdlib` compila contra la librería donde está instalado Ceres: `stdlib/include` entra en la
+búsqueda de includes y, con `--run`, se enlaza `libceres` y `stdlib/lib` entra en la búsqueda de
+`-l` (`-lceres_irq`, …).
 
-La librería se construye **una vez por nivel de optimización** (`-O0`, `-O1`, `-O2`) en
-`build/lib/O*/libceres.car`, junto a un fichero de declaraciones.
+## Si trabajas en la propia librería
 
-```shell title="Compilar la librería completa"
+Construyes la librería una vez por nivel de optimización (`-O0`, `-O1`, `-O2`) en
+`build/lib/O*/libceres.car`, con un fichero de declaraciones al lado:
+
+```shell title="Construir toda la librería"
 > make                 # o, directamente:
 > powershell -File tools/mklib.ps1
 ```
 
-<Output title="Lo que verás al terminar">
--O0 : compiling 100 C files
--O0 : assembling 107 units
-build/lib/O0/libceres.car: 107 objects, ... bytes
-... (repite para -O1 y -O2)
-done
-</Output>
+Luego pasas el archivo y sus declaraciones explícitamente:
 
-## 3. Compilar y ejecutar un programa
-
-El compilador hace todo el trabajo: preprocesa, compila, ensambla, enlaza contra el
-archivo de la librería y **ejecuta** con `--run`. Sólo se compila tu programa; la librería
-viene del `.car`.
-
-```shell title="Compilar y ejecutar contra la librería"
+```shell title="Compilar y ejecutar contra un build local"
 > ceresc prog.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
 ```
 
-Los tres argumentos clave son:
-
-| Argumento | Para qué |
-|---|---|
-| `build/lib/O2/libceres.car` | El archivo de la librería (solo se enlaza lo que usas) |
-| `--decls build/lib/O2/libceres.decls.casm` | Las declaraciones de lo que la librería define |
-| `-I include` | Dónde están las cabeceras (`stdio.h`, `ceres/gfx.h`, …) |
-
-## 4. Añadir la librería a un proyecto
-
-En un proyecto propio basta con llamar a `ceresc` con esos argumentos. Hay un ejemplo ya
-preparado para cada demo:
-
-```shell title="Ejecutar un ejemplo de la librería"
-> tools\example.ps1 hello
-> tools\example.ps1 snake          # abre una ventana
-> tools\example.ps1 snake --headless
-```
-
-<Callout type="warn" title="Los módulos opcionales se piden con // USE:">
-Dos módulos atan vectores de interrupción y el enlazador sólo admite **un dueño por
-vector**: `irq` (alarma, bucle de juego con pausa) y `fault` (informes de fallo). Un
-programa que los quiera lo pide con una línea al principio:
+<Callout type="warn" title="Módulos opcionales: hay tres">
+Tres módulos enganchan vectores de interrupción, y el enlazador permite **un dueño por vector**:
+`irq` (temporizador, alarma), `fault` (informes de fallo) y `mmu` (fallos de página). Un programa
+pide uno con una línea al principio:
 
 ```c
-// USE: irq
+// USE: mmu
 ```
 
 Un programa que instala su propio manejador de vector **no** debe enlazarlos.
 </Callout>
 
-## 5. Opciones útiles del compilador
-
-| Opción | Efecto |
-|---|---|
-| `-O0` / `-O1` / `-O2` | Nivel de optimización (`-O1` es el defecto) |
-| `-Os` / `-Og` | Optimiza por tamaño / para depurar |
-| `-Werror` | Convierte avisos en errores |
-| `-S` | Para en el ensamblador (`.casm`) y no enlaza |
-| `--emit-ir` | Imprime el IR optimizado |
-| `-fshort-double` | Hace que `double` sea un `float` (binary32) |
-| `--` | Todo lo que sigue son argumentos para tu programa |
-| `--stats` | Cuenta instrucciones, inlining y saltos de tabla |
-
-<Callout type="tip" title="-fshort-double">
-Por defecto `double` es **binary64 nativo** (pares de registros). Con `-fshort-double`
-el compilador hace que `double` sea un `float` (binary32): más rápido, menos preciso.
-</Callout>
-
 ## Siguiente paso
 
-<Quiz question="¿Qué fichero le pasas a ceresc para que enlace la librería?"
-  options="El código fuente de la librería|El archivo libceres.car|El binario ceres.exe|El .cres del programa"
+- [Hola, mundo](/wiki/hola-mundo)
+- [Construir la librería estándar](/wiki/build-stdlib) y [Montar el toolchain](/wiki/build-toolchain)
+- [La CLI de ceresc](/wiki/cli-ceresc)
+
+<Quiz question="¿Qué opción hace que ceresc use la librería estándar instalada?"
+  options="-I stdlib|--stdlib|--library|--decls"
   answer="1"
-  explain="El .car es el archivo de objetos: sólo se enlazan los miembros que resuelven algo que usas."></Quiz>
+  explain="--stdlib compila contra CERES_PATH/stdlib: stdlib/include entra en la búsqueda de includes y, con --run, se enlaza libceres."></Quiz>

@@ -1,0 +1,87 @@
+# Instalar un paquete
+
+La forma más rápida de tener Ceres funcionando es un **paquete**: la máquina (`ceres`), el
+compilador (`ceresc`), la librería estándar y la shell, juntos en un solo directorio. Los
+paquetes ya hechos para Windows están en `prebuilt/windows-x64/` de **CeresBinaries**; los de
+Linux y macOS se hacen con `build.sh`.
+
+## Qué deja un paquete
+
+Ceres vive en **un directorio**, y la variable de entorno **`CERES_PATH`** lo nombra:
+
+```
+<CERES_PATH>/
+  ceres, ceresc            las herramientas (ceres.exe, ceresc.exe y SDL3.dll en Windows)
+  shell/shell.cres         la shell: lo que arranca `ceres run` sin programa
+  shell/shell-small.cres   la shell pequeña, para el perfil micro
+  stdlib/include/          las cabeceras de la librería C
+  stdlib/lib/              libceres.car, libceres.decls.casm y los módulos opcionales
+  licenses/  README.txt  LICENSE.txt  VERSION  y el desinstalador
+```
+
+`ceresc prog.c --stdlib --run` compila contra `CERES_PATH/stdlib` (o el `stdlib/` que está junto
+a `ceresc`) y enlaza `libceres.car`; encuentra `ceres` en `CERES_PATH` y en el `PATH`. Un paquete
+**sin descomprimir del todo** funciona donde está, sin instalarlo ni configurar nada.
+
+## Windows
+
+Ejecuta `ceres-<version>-windows-x64-setup.exe`. Instala **para el usuario actual**, sin permisos
+de administrador, en `%LOCALAPPDATA%\Programs\Ceres` (pregunta, y acepta otro directorio),
+define `CERES_PATH` y añade el directorio al `PATH` del usuario.
+
+O descomprime `ceres-<version>-windows-x64.zip` y ejecuta `install.cmd`, que hace lo mismo:
+
+```bat
+install.cmd                                   :: pregunta dónde
+install.cmd -Destination D:\Tools\Ceres -Yes  :: o lo dices
+install.cmd -NoEnvironment                    :: lo copia; deja CERES_PATH y PATH en paz
+```
+
+`uninstall.cmd`, en el directorio instalado, lo quita otra vez, con su entrada de `PATH` y
+`CERES_PATH`.
+
+## Linux y macOS
+
+```sh
+sh ceres-<version>-<platform>-installer.sh
+```
+
+o descomprime el `.tar.gz` y ejecuta `./install.sh` dentro:
+
+```sh
+./install.sh                       # ~/.local/share/ceres, con ceres y ceresc enlazados en ~/.local/bin
+./install.sh --prefix /opt/ceres   # en otro sitio (como root: /opt/ceres y /usr/local/bin)
+./install.sh --no-env --yes        # sin tocar los ficheros de arranque de la shell, y sin preguntar
+```
+
+Define `CERES_PATH` en `~/.profile` (y en `~/.bash_profile`, `~/.zprofile` y `~/.zshrc` cuando
+existen), en un bloque propio. `uninstall.sh`, en el directorio instalado, lo quita otra vez.
+
+## Comprueba que funciona
+
+Abre una terminal **nueva** (para que se carguen `PATH` y `CERES_PATH`) y ejecuta:
+
+```sh
+> ceres run                              # la shell, en el directorio actual
+> ceresc hello.c --stdlib -O2 --run      # un programa C contra la librería estándar
+```
+
+<Output title="hello, ceres">
+hello, ceres
+</Output>
+
+<Callout type="tip" title="No hace falta instalar">
+El ZIP y el `.tar.gz` funcionan **en el sitio**: descomprime donde quieras y usa las herramientas
+desde ahí. Instalar solo añade `CERES_PATH` y la entrada de `PATH`, por comodidad.
+</Callout>
+
+## A partir de aquí
+
+- Construir desde el código: [Construir Ceres](/wiki/construir-ceres)
+- Tu primer programa: [Hola, mundo](/wiki/hola-mundo)
+- Las opciones de `ceresc`: [La CLI de ceresc](/wiki/cli-ceresc)
+
+<Quiz question="¿A qué apunta CERES_PATH?"
+  options="Al ejecutable ceresc|Al directorio donde está instalado Ceres|A la carpeta build del proyecto|A la variable PATH"
+  answer="1"
+  explain="CERES_PATH nombra el directorio de instalación, que contiene ceres, ceresc, shell/ y stdlib/."></Quiz>

@@ -5,8 +5,7 @@ para trabajar.
 
 ## La disposición recomendada
 
-Los tres repositorios, uno al lado del otro, es la forma más cómoda porque los scripts se
-encuentran solos:
+Los tres repositorios, uno al lado del otro, hacen fácil ver dónde aterriza cada build:
 
 ```
 Projects/
@@ -16,8 +15,8 @@ Projects/
    └─ Ceres STDLIB/     → la librería estándar
 ```
 
-Con esta disposición, la librería busca `../../Ceres-C` y `../../CeresASM`
-automáticamente.
+La librería **no** busca a sus vecinos por su cuenta: las herramientas se localizan por
+**`CERES`**/**`CERESC`**, por el directorio **`CERES_PATH`** o por el **`PATH`** (paso 2).
 
 ## 1. Compilar las tres piezas, en orden
 
@@ -125,7 +124,7 @@ Fíjate en la separación: **`ceresc` compila y enlaza** (podría ejecutar con `
 |---|---|
 | `cannot find ceresc` / `cannot find ceres` | Variables de entorno mal puestas o no están en el PATH |
 | `fatal error: 'stdio.h' not found` | Falta `-I include` (o la ruta es incorrecta) |
-| `CercesFS` no encontrado al abrir un fichero | Falta `fs_mount()`/`fs_format()` o `--disk` |
+| `CeresFS` no encontrado al abrir un fichero | Falta `fs_mount()`/`fs_format()` o `--disk` |
 | `ceres run` no abre ventana | La build no tiene SDL, o falta `SDL3.dll` |
 | `Undefined symbol: main` | El programa no define `main` (o el nombre cambió con `__asm__`) |
 | `This build has no windowed host` | Compilaste sin `CERES_ENABLE_SDL` y usas `--window` |

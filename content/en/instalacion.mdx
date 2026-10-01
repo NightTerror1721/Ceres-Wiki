@@ -1,109 +1,76 @@
-# Installing and building
+# Installing Ceres
 
-You need three things: the **compiler** (`ceresc`), the **machine** (`ceres`) and this
-**standard library**. On a development machine the three repositories usually sit as
-siblings:
+To build and run Ceres programs you need three things:
 
-```
-Projects/
-├─ CeresASM/        → ceres.exe comes from here
-├─ Ceres-C/         → ceresc.exe comes from here
-└─ Ceres Projects/
-   └─ Ceres STDLIB/ → this library
-```
+| Piece | Tool | From |
+| --- | --- | --- |
+| The machine and its tools | `ceres` | CeresASM |
+| The C compiler | `ceresc` | Ceres-C |
+| The standard library | `stdlib/` | Ceres STDLIB |
 
-## 1. Check the tools
+There are two ways to get them.
 
-<Callout type="info" title="Finding the binaries">
-The library scripts look for `ceresc`/`ceres` next to the checkout (`../../Ceres-C`,
-`../../CeresASM`) or through the **`CERESC`** and **`CERES_PATH`** environment variables.
+<Cards>
+  <Card title="Install a package" icon="📦" href="/wiki/instalar-paquete">Download a ready-made package (Windows, Linux, macOS) and run the installer.</Card>
+  <Card title="Build from source" icon="🛠️" href="/wiki/construir-ceres">Clone CeresBinaries and build the whole thing, or build the three repositories by hand.</Card>
+</Cards>
+
+## How the tools find each other
+
+<Callout type="info" title="How ceresc and the scripts locate the tools">
+`ceresc` finds `ceres` in this order: **`--ceres-path`**, the **`CERES_PATH`** directory (where
+Ceres is installed), then **`PATH`**. The environment variables named after a tool — **`CERES`**,
+**`CERESC`** — take the executable or its directory. The library scripts follow the same rule.
 </Callout>
 
-```shell title="Check they are on the PATH"
-> ceresc --version
-> ceres --help
+## If you have a package
+
+After installing (or unpacking) a package, one command builds and runs a program against the
+standard library, with no paths to pass:
+
+```shell title="Build and run against the installed library"
+> ceresc prog.c --stdlib -O2 --run
 ```
 
-## 2. Build the library
+`--stdlib` compiles against the library where Ceres is installed: `stdlib/include` joins the
+include search, and with `--run` `libceres` is linked and `stdlib/lib` joins the `-l` search
+(`-lceres_irq`, …).
 
-The library is built **once per optimization level** (`-O0`, `-O1`, `-O2`) into
-`build/lib/O*/libceres.car`, alongside a declarations file.
+## If you work on the library itself
+
+You build the library once per optimization level (`-O0`, `-O1`, `-O2`) into
+`build/lib/O*/libceres.car`, with a declarations file beside it:
 
 ```shell title="Build the whole library"
 > make                 # or, directly:
 > powershell -File tools/mklib.ps1
 ```
 
-<Output title="What you will see when it finishes">
--O0 : compiling 100 C files
--O0 : assembling 107 units
-build/lib/O0/libceres.car: 107 objects, ... bytes
-... (repeated for -O1 and -O2)
-done
-</Output>
+Then you pass the archive and its declarations explicitly:
 
-## 3. Build and run a program
-
-The compiler does everything: it preprocesses, compiles, assembles, links against the
-library archive and **runs** with `--run`. Only your program is compiled; the library comes
-from the `.car`.
-
-```shell title="Build and run against the library"
+```shell title="Build and run against a local build"
 > ceresc prog.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
 ```
 
-The three key arguments are:
-
-| Argument | What it is for |
-|---|---|
-| `build/lib/O2/libceres.car` | The library archive (only what you use is linked) |
-| `--decls build/lib/O2/libceres.decls.casm` | The declarations of what the library defines |
-| `-I include` | Where the headers live (`stdio.h`, `ceres/gfx.h`, …) |
-
-## 4. Use the library in a project
-
-For your own project just call `ceresc` with those arguments. There is a ready-made example
-for each demo:
-
-```shell title="Run a library example"
-> tools\example.ps1 hello
-> tools\example.ps1 snake          # opens a window
-> tools\example.ps1 snake --headless
-```
-
-<Callout type="warn" title="Optional modules are requested with // USE:">
-Two modules bind interrupt vectors and the linker allows **one owner per vector**: `irq`
-(alarm, pausing game loop) and `fault` (fault reports). A program that wants them asks for
-one with a line at the top:
+<Callout type="warn" title="Optional modules — there are three">
+Three modules bind interrupt vectors, and the linker allows **one owner per vector**: `irq`
+(timer, alarm), `fault` (fault reports) and `mmu` (page faults). A program asks for one with a
+line at the top:
 
 ```c
-// USE: irq
+// USE: mmu
 ```
 
 A program that installs its own vector handler must **not** link them.
 </Callout>
 
-## 5. Useful compiler options
-
-| Option | Effect |
-|---|---|
-| `-O0` / `-O1` / `-O2` | Optimization level (`-O1` is the default) |
-| `-Os` / `-Og` | Optimize for size / for debugging |
-| `-Werror` | Turn warnings into errors |
-| `-S` | Stop at assembly (`.casm`), do not link |
-| `--emit-ir` | Print the optimized IR |
-| `-fshort-double` | Make `double` a `float` (binary32) |
-| `--` | Everything after this goes to your program |
-| `--stats` | Count instructions, inlining and jump tables |
-
-<Callout type="tip" title="-fshort-double">
-By default `double` is **native binary64** (register pairs). With `-fshort-double` the
-compiler makes `double` a `float` (binary32): faster, less precise.
-</Callout>
-
 ## Next step
 
-<Quiz question="Which file do you pass to ceresc so it links the library?"
-  options="The library's source code|The libceres.car archive|The ceres.exe binary|The program's .cres"
+- [Hello, world](/wiki/hola-mundo)
+- [Building the standard library](/wiki/build-stdlib) and [Wiring the toolchain](/wiki/build-toolchain)
+- [The ceresc CLI](/wiki/cli-ceresc)
+
+<Quiz question="Which flag makes ceresc use the installed standard library?"
+  options="-I stdlib|--stdlib|--library|--decls"
   answer="1"
-  explain="The .car is the object archive: only the members that resolve a name you use get linked."></Quiz>
+  explain="--stdlib compiles against CERES_PATH/stdlib: stdlib/include joins the include search and, with --run, libceres is linked."></Quiz>

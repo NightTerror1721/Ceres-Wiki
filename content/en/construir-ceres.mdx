@@ -1,0 +1,96 @@
+# Building Ceres from source
+
+**CeresBinaries** builds and packages Ceres whole — the machine, the compiler, the standard
+library and the shell — into installers for Windows, Linux and macOS. Use it when you want a
+**package**; to build just one piece for development, see the *Building Ceres* section.
+
+## Clone it
+
+```sh
+git clone --recursive https://github.com/NightTerror1721/Ceres-Binaries.git
+```
+
+The three repositories are git **submodules** under `sources/`, pinned to the commits a package
+is built from. In a clone without them, `git submodule update --init` (the build scripts do it
+too, when the sources are missing).
+
+## Windows
+
+CMake 3.28+, Ninja, git and GCC with C++23 on `PATH` (MSYS2's `mingw64`):
+
+```bat
+powershell -ExecutionPolicy Bypass -File build.ps1            :: dist\ceres-<version>-windows-x64.zip and -setup.exe
+powershell -ExecutionPolicy Bypass -File build.ps1 -Prebuilt  :: ... and copy them into prebuilt\windows-x64
+```
+
+The executables are linked **statically** (they need no MinGW DLL); `ceres` with the SDL3
+window, which CeresASM's CMake fetches and builds (`SDL3.dll` goes beside it). The setup program
+is Inno Setup's when `ISCC.exe` is installed (`package/windows/ceres.iss`, with an entry in
+Settings ▸ Apps to uninstall it); otherwise it is made with IExpress, which every Windows has,
+and runs `install.ps1`.
+
+## Linux and macOS
+
+CMake 3.28+, GCC 13+ or Clang 17+, git, make or Ninja, and the development files SDL3 needs
+(on Linux: X11 or Wayland, ALSA or PulseAudio):
+
+```sh
+./build.sh                  # dist/ceres-<version>-<platform>.tar.gz and -installer.sh
+./build.sh --prebuilt       # ... and copy them into prebuilt/<platform>
+./build.sh --no-sdl         # a ceres without the window
+```
+
+On Linux the C++ runtime is linked into the executables, and SDL3 is linked statically on both.
+
+## Using other checkouts
+
+Both scripts build each repository, assemble the installation in
+`build/<platform>/stage/Ceres`, and run a **smoke test** from there before packaging it:
+`package/smoke/hello.c` compiled with `--stdlib` and run (with no `CERES_PATH`), and the shell
+started and ended. Other checkouts can stand in for the submodules:
+
+```bat
+powershell -ExecutionPolicy Bypass -File build.ps1 -CeresAsm <dir> -CeresC <dir> -Stdlib <dir>
+```
+```sh
+./build.sh --ceres-asm <dir> --ceres-c <dir> --stdlib <dir>
+```
+
+## Making a release
+
+<Steps>
+  <Step title="Pin the submodules">
+    `git -C sources/CeresASM checkout <commit>` (and the others), or
+    `git submodule update --remote` for the newest.
+  </Step>
+  <Step title="Raise the version">
+    Edit `VERSION`.
+  </Step>
+  <Step title="Package and commit">
+    `build.ps1 -Prebuilt` (and `build.sh --prebuilt`), then commit the submodules, the version
+    and `prebuilt/` together.
+  </Step>
+</Steps>
+
+## Layout of the repository
+
+| Path | What it is |
+| --- | --- |
+| `build.ps1`, `build.sh` | The builds: Windows, and Linux and macOS. |
+| `sources/` | The three repositories, as submodules. |
+| `package/windows/` | `install.ps1`/`install.cmd`, `uninstall.*`, and `ceres.iss` for Inno Setup. |
+| `package/unix/` | `install.sh`, `uninstall.sh` and the self-extracting installer header. |
+| `package/smoke/` | The smoke test. |
+| `prebuilt/<platform>/` | The packages of the last release. |
+| `build/`, `dist/` | What a build makes (not kept). |
+
+## Just the tools?
+
+To build the three repositories **by hand** (for development, without packaging), see
+[Building the virtual machine](/wiki/build-vm), [Building the compiler](/wiki/build-ceresc),
+[Building the standard library](/wiki/build-stdlib) and [Wiring the toolchain](/wiki/build-toolchain).
+
+<Quiz question="How are the three repositories included in CeresBinaries?"
+  options="As copied source|As git submodules under sources/|As NuGet packages|They are not included"
+  answer="1"
+  explain="sources/ holds CeresASM, Ceres-C and Ceres STDLIB as submodules, pinned to the commits a package is built from."></Quiz>
