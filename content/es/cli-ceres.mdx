@@ -42,13 +42,13 @@ El **primer token** elige el comando si es uno de `asm`, `link`, `ar`, `run`, `d
 | `--debug` | `asm`, `link`, `run`, `disasm` | Tablas de líneas y símbolos |
 | `--emit-debug-json` | `asm`, `link`, `disasm` | Volcar las tablas de debug en JSON |
 | `--symtab` | `link` | Tabla de nombres entre `__symtab_start`/`__symtab_end` |
-| `--memory <bytes>` | `run`, `debug`, `profile` | RAM (por defecto **16 MiB**) |
+| `--ram <bytes>` | `run`, `debug`, `profile` | RAM (por defecto **16 MiB**) |
 | `--disk <imagen>` | `run` | Fichero del anfitrión como disco |
 | `--port <n>=<img>` | `run` | Memoria en el puerto n |
 | `--cart <n>=<fichero>` | `run` | Cartucho (solo lectura) en el puerto n |
 | `--host-dir <dir>` | `run` | Raíz de los ficheros del anfitrión |
 | `--env <nombre>=<valor>` | `run` | Variable de entorno del programa |
-| `--window` / `--terminal` | `run` | Ventana o terminal |
+| `--window` / `--headless` | `run` | Ventana o terminal |
 | `--` | `run` | Todo lo que sigue es del programa |
 
 ## `ceres asm` — ensamblar
@@ -99,22 +99,22 @@ Necesita una salida y al menos un objeto. Acepta `.cobj` y también `.car` (los 
 ## `ceres run` — ejecutar
 
 ```
-ceres run <fichero.casm|fichero.cres> [--memory <bytes>] [--disk <img>] [--window | --terminal]
+ceres run <fichero.casm|fichero.cres> [--ram <bytes>] [--disk <img>] [--window | --headless]
          [--port <n>=<img>]... [--cart <n>=<fichero>]... [--env <n>=<v>]... [--host-dir <dir>] [-- <args>]
 ```
 
 ```shell
 > ceres run hello.cres
-> ceres run game.cres --memory 33554432 --disk save.img
+> ceres run game.cres --ram 33554432 --disk save.img
 > ceres run game.casm --port 0=stick.img --cart 1=game.cart
 > ceres run shell.casm --host-dir ./sandbox -- --verbose input.txt
-> ceres run fb.casm --terminal      # frames de texto por la consola
+> ceres run fb.casm --headless      # frames de texto por la consola
 > ceres run fb.casm --window        # necesita build con SDL
 ```
 
 <Callout type="info" title="Terminal o ventana">
-- `--window` abre la ventana (necesita SDL); `--terminal` nunca abre ventana.
-- Con SDL y sin `--terminal`, la ventana se abre **al mostrar el primer frame**.
+- `--window` abre la ventana (necesita SDL); `--headless` nunca abre ventana.
+- Con SDL y sin `--headless`, la ventana se abre **al mostrar el primer frame**.
 - La variable **`CERES_HEADLESS`** (distinta de `""`, `"0"`, `"false"`) fuerza modo consola.
 - `--window` tiene prioridad sobre `CERES_HEADLESS`.
 </Callout>
@@ -136,7 +136,7 @@ Muestra dirección, palabra cruda e instrucción. Con `--debug` anota cada palab
 ## `ceres profile` — perfilar
 
 ```
-ceres profile <fichero.casm|fichero.cres> [--memory <bytes>] [--listing]
+ceres profile <fichero.casm|fichero.cres> [--ram <bytes>] [--listing]
 ```
 
 Ejecuta contando instrucciones por línea de origen y las lista ordenadas en **stderr**.
@@ -153,7 +153,7 @@ fuente `.casm` directamente.
 ## `ceres debug` — depurar
 
 ```
-ceres debug <fichero.casm|fichero.cres> [<fuente2.casm> ...] [--memory <bytes>]
+ceres debug <fichero.casm|fichero.cres> [<fuente2.casm> ...] [--ram <bytes>]
             [--no-stop-on-entry] [--server] [--no-history]
 ```
 

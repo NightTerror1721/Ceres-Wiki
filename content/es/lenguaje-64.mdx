@@ -43,50 +43,36 @@ if (__builtin_add_overflow(a, b, &r))
     puts("desbordamiento de int");
 ```
 
-## Coma flotante: primero, la verdad incómoda
+## Coma flotante
 
-La máquina **sólo tiene coma flotante de 32 bits**. En concreto:
+La máquina tiene **dos formatos IEEE nativos**, cada uno con sus propias instrucciones:
 
-- `float` es IEEE 754 binary32.
-- `double` y `long double` **son `float`** (el compilador avisa con `W2001`).
-- En un variádico, `float` **no** se promociona a `double`.
-- Constantes como `3.14159265358979` se redondean a 32 bits.
+- `float` es IEEE 754 **binary32**.
+- `double` (y `long double`, el mismo tipo) es IEEE 754 **binary64**, calculado sobre
+  **pares de registros**.
+
+En un variádico un `float` se promociona a `double` (binary64) al pasar por `...`.
 
 ```c
-double d = 1.0 / 3.0;      // en realidad es float; W2001
+double d = 1.0 / 3.0;              // binary64 exacto
+printf("%.17g\n", d);              // 0.33333333333333331
 ```
 
-## La solución: `-fsoft-double`
+### `-fshort-double`: double como float
 
-Si compilas con **`--soft-double`**, `double` pasa a ser un **binary64 real** implementado
-en software (`ceres/f64.h`). El compilador llama a `__f64_add`, `__f64_mul`, etc., así que
-cuesta una llamada por operación, pero la precisión es la de un `double` de verdad.
+Con **`-fshort-double`**, `double` pasa a ser un `float` (binary32) y la librería pone la
+familia `float` bajo los nombres estándar (`strtod` es `strtof`, `atof` el de `float`,
+`difftime` y `%lf` de `scanf` usan `float`). `printf` no necesita nada: un `float` viaja
+por `...` como binary64 de todas formas.
 
 ```shell
-> ceresc prog.c build/lib/O2/libceres.car --decls ... -I include -O2 --soft-double --run
+> ceresc prog.c --stdlib -O2 -fshort-double --run
 ```
 
-```c
-double x = 1.0 / 3.0;              // binary64 exacto
-printf("%.17g\n", x);              // 0.33333333333333331
-```
+### Precisión de las funciones de `<math.h>`
 
-Con `--soft-double` también cambian a 64 bits las constantes de `float.h`
-(`DBL_MANT_DIG`, `DBL_MAX`, …), `strtod` devuelve un `double` real y `printf`/`scanf`
-usan su propio motor de conversión decimal exacta.
-
-## Precisión de las funciones de `math.h`
-
-Las funciones matemáticas de la librería están medidas:
-
-| Función | Precisión |
-|---|---|
-| `sqrt`, `fabs`, `floor`… | 1 instrucción, exactas |
-| `sin`, `cos` | 1.5 ULP para **todo** `float` (reducción Payne–Hanek) |
-| `tan` | 2.5 ULP |
-| `erf` | 2 ULP |
-| `erfc`, `tgamma` | 4 ULP |
-| `lgamma` | 3 ULP |
+`<math.h>` trae las **dos familias**: `sin`, `pow`, `erf`… (double) y `sinf`, `powf`… (float).
+La cabecera lista la cercanía de cada una; casi todas están dentro de ~1 ulp.
 
 ```c
 #include "math.h"
@@ -112,14 +98,7 @@ float         f   = float_from_bits(bits);   // 1.0f
 int           tipo = fpclassify(f);          // FP_NORMAL
 ```
 
-También hay una clase `f64` (binary64) que puedes usar sin `--soft-double`:
-
-```c
-#include "ceres/f64.h"
-f64 third = __f64_div(__f64_from_i32(1), __f64_from_i32(3));   // 0x3FD5555555555555
-```
-
-<Quiz question="¿Qué hace --soft-double?"
-  options="Acelera los float|Hace que double sea un IEEE 754 de 64 bits en software|Usa la FPU de 64 bits del anfitrion|Desactiva los avisos W2001"
+<Quiz question="¿Qué hace -fshort-double?"
+  options="Acelera los float|Hace que double sea un float (binary32)|Usa la FPU de 64 bits del anfitrión|Desactiva los avisos W2001"
   answer="1"
-  explain="La máquina no tiene coma flotante de 64 bits: el compilador emula binary64 llamando a las rutinas de ceres/f64.h."></Quiz>
+  explain="Por defecto double es binary64 nativo; -fshort-double lo convierte en un float de 32 bits."></Quiz>

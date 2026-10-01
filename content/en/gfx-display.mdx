@@ -7,7 +7,7 @@ ignores it if there is none, so the program stays testable).
 ## The basics
 
 ```c
-#include "ceres/display.h"
+#include "ceres/fb.h"
 
 display_size(320, 200);      // 0 if it took it (this clears)
 display_clear();             // paint black and rewind the cursor
@@ -80,7 +80,7 @@ We cover it in depth in **2D drawing with gfx**.
 
 ```c
 #include "stdio.h"
-#include "ceres/display.h"
+#include "ceres/fb.h"
 #include "ceres/color.h"
 
 int main(void)

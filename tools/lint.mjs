@@ -1,35 +1,35 @@
-// Ceres Wiki - lint de contenido (modernizacion v2).
+// Ceres Wiki - content lint (v2 modernization).
 //
 //   node tools/lint.mjs
 //
-// Comprueba, sin dependencias:
-//   1. Terminos obsoletos de la maquina v1 (--soft-double, f64.h, textfb, display.h,
+// Checks, with no dependencies:
+//   1. Obsolete v1 machine terms (--soft-double, f64.h, textfb, display.h,
 //      --terminal, mmio_r8/16..., read_port/write_port, --memory).
-//      Una linea que contenga `lint:v1` queda exenta (se usa en la guia de migracion).
-//   2. Paridad es/en: el mismo conjunto de slugs en content/<locale>/*.mdx y en _nav.json.
-//   3. Enlaces internos: todo `/wiki/<slug>` apunta a un slug de la navegacion.
+//      A line that contains `lint:v1` is exempt (used in the migration guide).
+//   2. es/en parity: the same set of slugs in content/<locale>/*.mdx and in _nav.json.
+//   3. Internal links: every `/wiki/<slug>` points to a slug in the navigation.
 //
-// Exporta lint() -> numero de problemas; ejecutado directo imprime el informe.
+// Exports lint() -> number of problems; run directly it prints the report.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availableLocales, loadNav, flattenNav, CONTENT_DIR } from '../lib/content.js';
 
 const OBSOLETE = [
-  ['soft-double', 'v2: double es nativo; usa -fshort-double (double = float)'],
-  ['f64.h', 'v2: ceres/f64.h se elimino (F6)'],
-  ['ns64.h', 'v2: ceres/ns64.h se elimino (F6)'],
-  ['--terminal', 'v2: usa --headless (o CERES_HEADLESS=1)'],
-  ['-Terminal', 'v2: usa --headless'],
-  ['textfb', 'v2: ceres/textfb.h es ahora ceres/text.h'],
-  ['display.h', 'v2: ceres/display.h es ahora ceres/fb.h'],
-  ['mmio_r8', 'v2: MMIO es solo de 32 bits (mmio_r32)'],
-  ['mmio_r16', 'v2: MMIO es solo de 32 bits (mmio_r32)'],
-  ['mmio_w8', 'v2: MMIO es solo de 32 bits (mmio_w32)'],
-  ['mmio_w16', 'v2: MMIO es solo de 32 bits (mmio_w32)'],
-  ['read_port', 'v2: usa mmio_r32 (read_port se elimino)'],
-  ['write_port', 'v2: usa mmio_w32 (write_port se elimino)'],
-  ['--memory', 'v2: usa --ram <bytes>']
+  ['soft-double', 'v2: double is native; use -fshort-double (double = float)'],
+  ['f64.h', 'v2: ceres/f64.h was removed (F6)'],
+  ['ns64.h', 'v2: ceres/ns64.h was removed (F6)'],
+  ['--terminal', 'v2: use --headless (or CERES_HEADLESS=1)'],
+  ['-Terminal', 'v2: use --headless'],
+  ['textfb', 'v2: ceres/textfb.h is now ceres/text.h'],
+  ['display.h', 'v2: ceres/display.h is now ceres/fb.h'],
+  ['mmio_r8', 'v2: MMIO is 32-bit only (mmio_r32)'],
+  ['mmio_r16', 'v2: MMIO is 32-bit only (mmio_r32)'],
+  ['mmio_w8', 'v2: MMIO is 32-bit only (mmio_w32)'],
+  ['mmio_w16', 'v2: MMIO is 32-bit only (mmio_w32)'],
+  ['read_port', 'v2: use mmio_r32 (read_port was removed)'],
+  ['write_port', 'v2: use mmio_w32 (write_port was removed)'],
+  ['--memory', 'v2: use --ram <bytes>']
 ];
 
 function mdxFiles(locale) {
@@ -52,8 +52,8 @@ export function lint({ verbose = true } = {}) {
   const navByLocale = {};
   for (const locale of locales) navByLocale[locale] = new Set(navSlugs(locale));
 
-  // 1. Terminos obsoletos.
-  say('lint: terminos obsoletos');
+  // 1. Obsolete terms.
+  say('lint: obsolete terms');
   for (const locale of locales) {
     for (const file of mdxFiles(locale)) {
       const full = path.join(CONTENT_DIR, locale, file);
@@ -68,23 +68,23 @@ export function lint({ verbose = true } = {}) {
       });
     }
   }
-  say(`  ${problems.length} apariciones`);
+  say(`  ${problems.length} occurrences`);
 
-  // 2. Paridad es/en (ficheros y navegacion).
-  say('lint: paridad es/en');
+  // 2. es/en parity (files and navigation).
+  say('lint: es/en parity');
   const before = problems.length;
   const fileSets = {};
   for (const locale of locales) fileSets[locale] = new Set(mdxFiles(locale));
   if (locales.includes('es') && locales.includes('en')) {
-    for (const f of fileSets.es) if (!fileSets.en.has(f)) problems.push(`paridad: falta content/en/${f}`);
-    for (const f of fileSets.en) if (!fileSets.es.has(f)) problems.push(`paridad: falta content/es/${f}`);
-    for (const s of navByLocale.es) if (!navByLocale.en.has(s)) problems.push(`paridad nav: "${s}" no esta en /en`);
-    for (const s of navByLocale.en) if (!navByLocale.es.has(s)) problems.push(`paridad nav: "${s}" no esta en /es`);
+    for (const f of fileSets.es) if (!fileSets.en.has(f)) problems.push(`parity: content/en/${f} is missing`);
+    for (const f of fileSets.en) if (!fileSets.es.has(f)) problems.push(`parity: content/es/${f} is missing`);
+    for (const s of navByLocale.es) if (!navByLocale.en.has(s)) problems.push(`nav parity: "${s}" is not in /en`);
+    for (const s of navByLocale.en) if (!navByLocale.es.has(s)) problems.push(`nav parity: "${s}" is not in /es`);
   }
-  say(`  ${problems.length - before} problemas`);
+  say(`  ${problems.length - before} problems`);
 
-  // 3. Enlaces internos /wiki/<slug>.
-  say('lint: enlaces internos');
+  // 3. Internal links /wiki/<slug>.
+  say('lint: internal links');
   const beforeLinks = problems.length;
   const linkRe = /(?:\]\(|\bhref=")\/wiki\/([a-z0-9][a-z0-9-]*)/gi;
   for (const locale of locales) {
@@ -93,15 +93,15 @@ export function lint({ verbose = true } = {}) {
       const text = fs.readFileSync(path.join(CONTENT_DIR, locale, file), 'utf8');
       for (const m of text.matchAll(linkRe)) {
         const slug = m[1];
-        if (!known.has(slug)) problems.push(`${locale}/${file}: enlace a /wiki/${slug} no esta en la navegacion`);
+        if (!known.has(slug)) problems.push(`${locale}/${file}: link to /wiki/${slug} is not in the navigation`);
       }
     }
   }
-  say(`  ${problems.length - beforeLinks} problemas`);
+  say(`  ${problems.length - beforeLinks} problems`);
 
   if (verbose) {
     if (problems.length) {
-      console.log(`\nLINT: ${problems.length} problema(s)`);
+      console.log(`\nLINT: ${problems.length} problem(s)`);
       for (const p of problems) console.log('  - ' + p);
     } else {
       console.log('\nLINT: OK');

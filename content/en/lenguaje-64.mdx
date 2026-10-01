@@ -43,50 +43,36 @@ if (__builtin_add_overflow(a, b, &r))
     puts("int overflow");
 ```
 
-## Floating point: first, the uncomfortable truth
+## Floating point
 
-The machine has **only 32-bit floating point**. Concretely:
+The machine has **two native IEEE formats**, each with its own instructions:
 
-- `float` is IEEE 754 binary32.
-- `double` and `long double` **are `float`** (the compiler warns with `W2001`).
-- In a variadic call, `float` is **not** promoted to `double`.
-- Constants like `3.14159265358979` are rounded to 32 bits.
+- `float` is IEEE 754 **binary32**.
+- `double` (and `long double`, the same type) is IEEE 754 **binary64**, computed on
+  **register pairs**.
+
+In a variadic call a `float` is promoted to `double` (binary64) when passed through `...`.
 
 ```c
-double d = 1.0 / 3.0;      // actually a float; W2001
+double d = 1.0 / 3.0;              // exact binary64
+printf("%.17g\n", d);              // 0.33333333333333331
 ```
 
-## The solution: `-fsoft-double`
+### `-fshort-double`: double as float
 
-If you compile with **`--soft-double`**, `double` becomes a **real binary64** implemented in
-software (`ceres/f64.h`). The compiler calls `__f64_add`, `__f64_mul`, etc., so it costs one
-call per operation, but the precision is that of a real `double`.
+With **`-fshort-double`**, `double` becomes a `float` (binary32) and the library gives the
+`float` family under the standard names (`strtod` is `strtof`, `atof` the float one,
+`difftime` and `%lf` in `scanf` use `float`). `printf` needs nothing: a `float` travels
+through `...` as a binary64 anyway.
 
 ```shell
-> ceresc prog.c build/lib/O2/libceres.car --decls ... -I include -O2 --soft-double --run
+> ceresc prog.c --stdlib -O2 -fshort-double --run
 ```
 
-```c
-double x = 1.0 / 3.0;              // exact binary64
-printf("%.17g\n", x);              // 0.33333333333333331
-```
+### Accuracy of `<math.h>`
 
-With `--soft-double` the constants in `float.h` also become 64-bit (`DBL_MANT_DIG`,
-`DBL_MAX`, …), `strtod` returns a real `double`, and `printf`/`scanf` use their own exact
-decimal conversion engine.
-
-## Accuracy of `math.h`
-
-The library's math functions are measured:
-
-| Function | Accuracy |
-|---|---|
-| `sqrt`, `fabs`, `floor`… | one instruction, exact |
-| `sin`, `cos` | 1.5 ULP for **every** `float` (Payne–Hanek reduction) |
-| `tan` | 2.5 ULP |
-| `erf` | 2 ULP |
-| `erfc`, `tgamma` | 4 ULP |
-| `lgamma` | 3 ULP |
+`<math.h>` has **both families**: `sin`, `pow`, `erf`… (double) and `sinf`, `powf`… (float).
+The header lists how close each one is; most are within about 1 ulp.
 
 ```c
 #include "math.h"
@@ -112,14 +98,7 @@ float         f   = float_from_bits(bits);   // 1.0f
 int           kind = fpclassify(f);          // FP_NORMAL
 ```
 
-There is also an `f64` class (binary64) you can use without `--soft-double`:
-
-```c
-#include "ceres/f64.h"
-f64 third = __f64_div(__f64_from_i32(1), __f64_from_i32(3));   // 0x3FD5555555555555
-```
-
-<Quiz question="What does --soft-double do?"
-  options="Speeds up floats|Makes double a 64-bit IEEE 754 number in software|Uses the host's 64-bit FPU|Disables the W2001 warnings"
+<Quiz question="What does -fshort-double do?"
+  options="Speeds up floats|Makes double a float (binary32)|Uses the host's 64-bit FPU|Disables the W2001 warnings"
   answer="1"
-  explain="The machine has no 64-bit floating point: the compiler emulates binary64 by calling into ceres/f64.h."></Quiz>
+  explain="By default double is native binary64; -fshort-double turns it into a 32-bit float."></Quiz>

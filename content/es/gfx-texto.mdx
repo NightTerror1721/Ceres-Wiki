@@ -7,7 +7,7 @@ para juegos de texto, roguelikes y menús.
 ## Iniciarlo
 
 ```c
-#include "ceres/textfb.h"
+#include "ceres/text.h"
 
 if (fb_init(40, 20) != 0)     // columnas, filas (hasta 200x100)
 {
@@ -52,7 +52,7 @@ Colores: `FB_BLACK FB_RED FB_GREEN FB_YELLOW FB_BLUE FB_MAGENTA FB_CYAN FB_WHITE
 ## ¿Dónde se ve el fotograma?
 
 - Con ventana (SDL): se dibuja en una **ventana** con la fuente de mapa de bits, en color.
-- Sin ventana (`--terminal`, o `CERES_HEADLESS=1`): se imprime como **texto** en la salida.
+- Sin ventana (`--headless`, o `CERES_HEADLESS=1`): se imprime como **texto** en la salida.
 
 Puedes forzarlo en caliente:
 
@@ -66,7 +66,7 @@ int donde = fb_output();
 ```c title="rogue.c"
 // USE: irq
 #include "stdio.h"
-#include "ceres/textfb.h"
+#include "ceres/text.h"
 #include "ceres/key.h"
 #include "ceres/rand.h"
 

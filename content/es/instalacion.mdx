@@ -68,7 +68,7 @@ preparado para cada demo:
 ```shell title="Ejecutar un ejemplo de la librería"
 > tools\example.ps1 hello
 > tools\example.ps1 snake          # abre una ventana
-> tools\example.ps1 snake -Terminal
+> tools\example.ps1 snake --headless
 ```
 
 <Callout type="warn" title="Los módulos opcionales se piden con // USE:">
@@ -92,14 +92,13 @@ Un programa que instala su propio manejador de vector **no** debe enlazarlos.
 | `-Werror` | Convierte avisos en errores |
 | `-S` | Para en el ensamblador (`.casm`) y no enlaza |
 | `--emit-ir` | Imprime el IR optimizado |
-| `--soft-double` | Hace que `double` sea un IEEE binary64 real de 64 bits |
+| `-fshort-double` | Hace que `double` sea un `float` (binary32) |
 | `--` | Todo lo que sigue son argumentos para tu programa |
 | `--stats` | Cuenta instrucciones, inlining y saltos de tabla |
 
-<Callout type="tip" title="-fsoft-double">
-Por defecto `double` es `float` (la máquina sólo tiene coma flotante de 32 bits). Con
-`-fsoft-double` el compilador usa un **binary64 en software** de la librería
-(`ceres/f64.h`). Cuesta una llamada por operación, pero da la precisión de un `double`.
+<Callout type="tip" title="-fshort-double">
+Por defecto `double` es **binary64 nativo** (pares de registros). Con `-fshort-double`
+el compilador hace que `double` sea un `float` (binary32): más rápido, menos preciso.
 </Callout>
 
 ## Siguiente paso

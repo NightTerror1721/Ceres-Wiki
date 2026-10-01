@@ -13,9 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      # Render de todas las paginas + lint de contenido (terminos v1, paridad es/en, enlaces).
+      # Renders every page + content lint (v1 terms, es/en parity, links).
       - name: selfcheck
         run: node tools/selfcheck.js
-      # Exportacion estatica: prueba que el generador no falla.
+      # Static export: proves the generator does not fail.
       - name: build
         run: node tools/build.js

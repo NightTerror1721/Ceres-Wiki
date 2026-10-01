@@ -91,7 +91,7 @@ int main(void)
 `fb_text` y `font_text` toman UTF-8 y dibujan todo lo que quepa en Latin-1:
 
 ```c
-#include "ceres/textfb.h"
+#include "ceres/text.h"
 fb_text(0, 0, "¿Qué año?");        // 9 celdas (los caracteres, no los bytes)
 fb_text_width("¿Qué año?");        // 9
 ```

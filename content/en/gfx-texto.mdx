@@ -7,7 +7,7 @@ and menus.
 ## Init it
 
 ```c
-#include "ceres/textfb.h"
+#include "ceres/text.h"
 
 if (fb_init(40, 20) != 0)     // columns, rows (up to 200x100)
 {
@@ -52,7 +52,7 @@ Colours: `FB_BLACK FB_RED FB_GREEN FB_YELLOW FB_BLUE FB_MAGENTA FB_CYAN FB_WHITE
 ## Where does the frame go?
 
 - With a window (SDL): it is drawn into a **window** with the bitmap font, in colour.
-- Without a window (`--terminal`, or `CERES_HEADLESS=1`): it is printed as **text** to the
+- Without a window (`--headless`, or `CERES_HEADLESS=1`): it is printed as **text** to the
   output.
 
 You can force it at run time:
@@ -67,7 +67,7 @@ int where = fb_output();
 ```c title="rogue.c"
 // USE: irq
 #include "stdio.h"
-#include "ceres/textfb.h"
+#include "ceres/text.h"
 #include "ceres/key.h"
 #include "ceres/rand.h"
 

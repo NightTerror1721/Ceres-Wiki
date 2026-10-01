@@ -1,0 +1,78 @@
+# Float and double
+
+The machine has **native IEEE floating point** in two widths, each computed by its own
+instructions:
+
+| Type | Format | Size | Registers |
+| --- | --- | --- | --- |
+| `float` | IEEE 754 binary32 | 4 bytes | one register |
+| `double` / `long double` | IEEE 754 binary64 | 8 bytes | a **register pair** |
+
+There is no software double: binary64 is done by the machine itself, not by a library
+routine per operation. `<math.h>` has both families — `sin`, `pow`, `erf`… for `double`
+and `sinf`, `powf`, `erff`… for `float` (the header lists how close each one is; most are
+within about 1 ulp).
+
+## `-fshort-double`
+
+With **`-fshort-double`**, `double` becomes a `float` (binary32) and the library gives the
+`float` family under the standard names (`strtod` is `strtof`, `atof` the float one,
+`difftime` and `%lf` in `scanf` use `float`). `printf` needs nothing: a `float` travels
+through `...` as a binary64 anyway.
+
+```shell
+> ceresc prog.c --stdlib -O2 -fshort-double --run
+```
+
+## Exact conversions
+
+`printf`, `scanf`, `strtof` and `strtod` convert between binary and decimal **exactly**,
+correctly rounded, whatever the number of digits (`src/fconv.c` for `float`,
+`src/fconv64.c` for `double`).
+
+```c
+#include "stdio.h"
+double d = 0.1;
+printf("%.20f\n", d);        // 0.10000000000000000555
+```
+
+## Formatting helpers
+
+| Function | What it does |
+| --- | --- |
+| `strfromf(buf, n, fmt, fp)` | C23: format a `float` with `%[.p]{aAeEfFgG}` into a buffer |
+| `ftoa_shortest(buf, n, x)` | the fewest digits that read back as `x` ("0.1", "1e+30") |
+
+```c
+#include "stdlib.h"
+char buf[32];
+strfromf(buf, sizeof buf, "%.3f", 3.14159f);   // "3.142"
+ftoa_shortest(buf, sizeof buf, 0.1f);          // "0.1"
+```
+
+## Bits and classification
+
+```c
+unsigned int bits = float_bits(1.0f);        // 0x3F800000
+float         f   = float_from_bits(bits);   // 1.0f
+int           kind = fpclassify(f);          // FP_NORMAL
+```
+
+<Callout type="warn" title="A division by zero does not fail">
+Unless the IEEE feature is on, a `float` division by zero does not give `inf`: it sets the
+*Trap* flag and leaves the destination unchanged. Turn it on with
+`sys_set_features(sys_features() | SYS_FEATURE_IEEE_DIVIDE);`.
+</Callout>
+
+## When to use which
+
+| Situation | Recommendation |
+| --- | --- |
+| Game (positions, simple physics) | `float`, or `ceres/fixed.h` |
+| Money, accumulations, code that uses `double` | `double` (native binary64) |
+| You want `double` to be a fast `float` | `-fshort-double` |
+
+<Quiz question="By default, what is `double` on Ceres?"
+  options="A 32-bit float|A native IEEE binary64 on a register pair|A software binary64 in a library|A fixed-point type"
+  answer="1"
+  explain="The machine computes binary64 with its own instructions over register pairs; there is no software double."></Quiz>

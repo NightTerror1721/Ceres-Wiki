@@ -71,7 +71,8 @@ int ok   = sscanf("3 4", "%d %d", &a, &b);
 ```
 
 `scanf` soporta `%d %i %u %x %X %o %c %s %f %e %g %[set] %p %n %%`, ancho, `*` para
-descartar y modificadores de longitud. `%lf` es un `float` (salvo con `--soft-double`).
+descartar y modificadores de longitud. `%f` guarda un `float`; `%lf` y `%Lf` un `double`
+(con `-fshort-double`, un `float`).
 
 ## El flujo de error
 

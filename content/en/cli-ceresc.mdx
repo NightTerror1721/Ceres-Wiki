@@ -128,7 +128,7 @@ If you point at a path that holds no `ceres`, the build fails; it does **not** f
 | `-Os` | Like `-O1` without inlining or jump tables |
 | `-Og` | Like `-O1` without inlining, slot reuse, tail calls, IV-SR or loop idioms |
 | `-f<opt>` / `-fno-<opt>` | Enable/disable one pass (applied in order) |
-| `-fsoft-double` | `double` becomes a real 64-bit IEEE binary64 in software |
+| `-fshort-double` | `double` becomes a `float` (binary32) |
 | `--stats` / `-fstats` | Optimizer report (on stderr) |
 
 The 28 individually switchable passes:

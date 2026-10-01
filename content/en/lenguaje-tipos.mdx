@@ -15,8 +15,8 @@ Ceres is a **32-bit** machine. This is how much each type takes:
 | `long` | 4 | 4 | the same as `int`! |
 | `long long` | 8 | 8 | a real 64-bit type |
 | `float` | 4 | 4 | IEEE binary32 |
-| `double` | 4 | 4 | alias for `float` (warning `W2001`) |
-| `double` with `--soft-double` | 8 | 8 | a real binary64 in software |
+| `double` | 8 | 4 | IEEE binary64 (register pair) |
+| `double` with `-fshort-double` | 4 | 4 | alias for `float` |
 | pointer | 4 | 4 | the machine addresses 4 GiB |
 | `struct` | aligned sum | largest member | |
 | `enum` | 4 | 4 | it is an `int` |

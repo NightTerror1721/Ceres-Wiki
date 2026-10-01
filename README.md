@@ -1,160 +1,162 @@
 # Ceres Wiki
 
-Tutorial y wiki interactiva **bilingüe** (inglés y español; el inglés es el idioma por defecto) de la máquina virtual **Ceres**
-(CeresASM + Ceres-C + Ceres STDLIB). Cubre desde `Hola, mundo` hasta juegos retro completos
-(Pong, Arkanoid, 4 en raya, Sokoban y una aventura RPG 2D), pasando por **todos** los módulos
-de la librería, más guías para **compilar las tres piezas** y para usar **sus líneas de
-comandos** en detalle.
+An interactive, **bilingual** tutorial and wiki (English and Spanish; English is the default
+language) for the **Ceres** virtual machine (CeresASM + Ceres-C + Ceres STDLIB). It goes from
+`Hello, world` to complete retro games (Pong, Arkanoid, Connect Four, Sokoban and a 2D RPG
+adventure), through **every** module of the library, plus guides to **build the pieces** and to
+use **their command lines** in detail.
 
-## Arrancar
+## Running
 
-No tiene dependencias: sólo necesita **Node.js 18 o superior**.
+It has no dependencies: it only needs **Node.js 18 or newer**.
 
 ```shell
 > node server.js
-> # o:
+> # or:
 > npm start
 ```
 
-Abre <http://localhost:4300>. Cambia el puerto con `PORT`:
+Open <http://localhost:4300>. Change the port with `PORT`:
 
 ```shell
 > set PORT=8080 && node server.js
 ```
 
-## Idiomas
+## Languages
 
-- **El inglés es el idioma principal y por defecto**: `/en/wiki/<slug>`. `/` redirige a `/en/...`
-  (o a `/es/...` si el navegador prefiere español). El español, para quien lo escoja, en
+- **English is the primary and default language**: `/en/wiki/<slug>`. `/` redirects to `/en/...`
+  (or `/es/...` if the browser prefers Spanish). Spanish, for those who pick it, is at
   `/es/wiki/<slug>`.
-- Conmutador **EN/ES** en la barra superior (mantiene la página actual).
-- La navegación, la interfaz (búsqueda, progreso, botones) y **todo el contenido** están en
-  ambos idiomas. 64 páginas por idioma.
-- Si una página no estuviera traducida, se sirve la inglesa con un aviso; hoy todo está traducido.
+- An **EN/ES** switch in the top bar (it keeps the current page).
+- The navigation, the interface (search, progress, buttons) and **all the content** are in both
+  languages. 64 pages per language.
+- If a page is not translated, the English one is served with a note; today everything is
+  translated.
 
-## Qué incluye
+## What it includes
 
-- Un **servidor HTTP** propio (`server.js`) que renderiza la wiki en el servidor.
-- Renderizador de **Markdown y MDX** sin dependencias (`lib/markdown.js`).
-- Resaltado de sintaxis para C, CASM, JSON, INI y consola (`lib/highlight.js`).
-- Internacionalización (`lib/i18n.js`) y contenido por locale (`content/es`, `content/en`).
-- Frontend con **búsqueda** (por idioma), **tema claro/oscuro**, **progreso de lectura**,
-  índice lateral, pestañas, quiz y copiado de código (`public/`).
-- **Demos jugables** en canvas de los cinco juegos (`public/demos.js`).
-- 128 páginas en total: 64 en español y 64 en inglés, en 14 secciones.
+- Its own **HTTP server** (`server.js`) that renders the wiki on the server.
+- A dependency-free **Markdown and MDX** renderer (`lib/markdown.js`).
+- Syntax highlighting for C, CASM, JSON, INI and the console (`lib/highlight.js`).
+- Internationalization (`lib/i18n.js`) and per-locale content (`content/en`, `content/es`).
+- A front end with **search** (per language), **light/dark theme**, **reading progress**, a side
+  index, tabs, quizzes and code copy (`public/`).
+- **Playable canvas demos** of the five games (`public/demos.js`).
+- 128 pages in total: 64 in English and 64 in Spanish, in 14 sections.
 
-## Estructura
+## Structure
 
 ```
 Ceres Wiki/
-├─ server.js              Servidor HTTP (sin dependencias)
+├─ server.js              HTTP server (no dependencies)
 ├─ package.json
 ├─ lib/
-│  ├─ content.js          Navegacion, paginas y busqueda por idioma
-│  ├─ markdown.js         Renderizador Markdown + MDX
-│  ├─ highlight.js        Resaltado de sintaxis
-│  ├─ i18n.js             Idiomas y cadenas de interfaz
-│  └─ layout.js           Plantilla HTML compartida
+│  ├─ content.js          Navigation, pages and search per language
+│  ├─ markdown.js         Markdown + MDX renderer
+│  ├─ highlight.js        Syntax highlighting
+│  ├─ i18n.js             Languages and UI strings
+│  └─ layout.js           Shared HTML template
 ├─ public/
-│  ├─ style.css           Tema de la wiki
-│  ├─ app.js              Router, busqueda, progreso, componentes, idioma
-│  ├─ demos.js            Juegos en canvas
+│  ├─ style.css           Wiki theme
+│  ├─ app.js              Router, search, progress, components, language
+│  ├─ demos.js            Canvas games
 │  └─ favicon.svg
 ├─ content/
-│  ├─ es/                 Contenido en espanol (_nav.json + *.mdx)
-│  └─ en/                 Contenido en ingles (_nav.json + *.mdx)
+│  ├─ en/                 English content (_nav.json + *.mdx)
+│  └─ es/                 Spanish content (_nav.json + *.mdx)
 └─ tools/
-   ├─ build.js            Exportacion estatica a dist/ (por idioma)
-   └─ selfcheck.js        Comprueba que todas las paginas renderizan
+   ├─ build.js            Static export to dist/ (per language)
+   ├─ lint.mjs            Content lint (v1 terms, es/en parity, links)
+   └─ selfcheck.js        Checks that every page renders
 ```
 
-## Secciones
+## Sections
 
-1. **Primeros pasos** — qué es Ceres, instalación, hola mundo, anatomía de un programa
-2. **Compilar Ceres** — la máquina virtual, el compilador, la librería y el toolchain
-3. **El lenguaje Ceres-C** — tipos, control de flujo, funciones, 64 bits, preprocesador, atributos
-4. **Consola y texto** · 5. **Librerías estándar** · 6. **Gráficos** · 7. **Sonido, TUI y entrada**
-8. **Almacenamiento** · 9. **Datos y recursos** · 10. **Sistema** · 11. **Estructuras de datos**
-12. **Juegos completos** · 13. **Línea de comandos** (ceres, ceresc, depurador) · 14. **Referencia**
+1. **Getting started** — what Ceres is, installing, hello world, anatomy of a program
+2. **Building Ceres** — the virtual machine, the compiler, the library and the toolchain
+3. **The Ceres-C language** — types, control flow, functions, 64-bit, preprocessor, attributes
+4. **Console and text** · 5. **Standard libraries** · 6. **Graphics** · 7. **Sound, TUI and input**
+8. **Storage** · 9. **Data and resources** · 10. **System** · 11. **Data structures**
+12. **Complete games** · 13. **Command line** (ceres, ceresc, debugger) · 14. **Reference**
 
-## Añadir una página
+## Adding a page
 
-1. Crea `content/<locale>/mi-pagina.mdx` (en `es/` y `en/`).
-2. Añádela a `content/<locale>/_nav.json` en la sección que quieras.
+1. Create `content/<locale>/my-page.mdx` (in both `en/` and `es/`).
+2. Add it to `content/<locale>/_nav.json` in the section you want.
 
-Las páginas listadas en `_nav.json` que todavía no tienen fichero **no aparecen** (no hay
-enlaces rotos): puedes planificar y escribir poco a poco.
+Pages listed in `_nav.json` that do not have a file yet **do not appear** (no broken links):
+you can plan and write them little by little.
 
-## Componentes MDX
+## MDX components
 
-Dentro de un `.mdx` (o `.md`) puedes usar, además del Markdown normal:
+Inside an `.mdx` (or `.md`) you can use, besides normal Markdown:
 
 ```mdx
-<Callout type="tip" title="Titulo">Texto en **Markdown**.</Callout>
+<Callout type="tip" title="Title">**Markdown** text.</Callout>
 
 <Steps>
-  <Step title="Primero">...</Step>
-  <Step title="Después">...</Step>
+  <Step title="First">...</Step>
+  <Step title="Then">...</Step>
 </Steps>
 
 <Tabs>
-  <Tab label="Opción A">...</Tab>
-  <Tab label="Opción B">...</Tab>
+  <Tab label="Option A">...</Tab>
+  <Tab label="Option B">...</Tab>
 </Tabs>
 
 <Cards>
-  <Card title="Enlace" icon="🚀" href="/wiki/inicio">Descripción.</Card>
+  <Card title="Link" icon="🚀" href="/wiki/start">Description.</Card>
 </Cards>
 
-<GameDemo kind="pong" title="Pong">Mueve con W/S.</GameDemo>
+<GameDemo kind="pong" title="Pong">Move with W/S.</GameDemo>
 
-<Quiz question="¿…?" options="a|b|c" answer="1" explain="Porque…"></Quiz>
+<Quiz question="¿…?" options="a|b|c" answer="1" explain="Because…"></Quiz>
 
-<Output title="Salida">texto sin formato</Output>
+<Output title="Output">plain text</Output>
 ```
 
-Valores de `GameDemo`: `pong`, `arkanoid`, `connect4`, `sokoban`, `rpg`.
+`GameDemo` values: `pong`, `arkanoid`, `connect4`, `sokoban`, `rpg`.
 
-## Exportar a estático
+## Static export
 
 ```shell
-> node tools/build.js      # genera dist/es/... y dist/en/... con HTML plano
+> node tools/build.js      # writes dist/en/... and dist/es/... as plain HTML
 ```
 
-## Verificar el contenido
+## Verifying the content
 
 ```shell
-> node tools/selfcheck.js  # renderiza todas las páginas (ambos idiomas) y busca problemas
-> node tools/lint.mjs      # solo el lint de contenido (términos v1, paridad es/en, enlaces)
+> node tools/selfcheck.js  # renders every page (both languages) and looks for problems
+> node tools/lint.mjs      # content lint only (v1 terms, es/en parity, links)
 ```
 
-## Mantenimiento
+## Maintenance
 
-El plan de actualización y su diagnóstico están en [PLAN-MODERNIZACION.md](PLAN-MODERNIZACION.md).
+The update plan and its diagnosis are in [MODERNIZATION-PLAN.md](MODERNIZATION-PLAN.md).
 
-**Fuente de verdad.** La wiki **no define** comportamiento: lo resume y enlaza. Antes de tocar una
-página, contrástala con:
+**Source of truth.** The wiki does **not** define behaviour: it summarizes and links. Before
+touching a page, check it against:
 
-| Tema | Fuente |
+| Topic | Source |
 | --- | --- |
-| Máquina, memoria, ISA, IRQ, `ceres` | `../CeresASM/docs/*.md` y `ceres --help` |
-| Lenguaje y `ceresc` | `../Ceres-C/docs/*.md` y `ceresc --help` |
-| Cabeceras y API de la librería | `../Ceres Projects/Ceres STDLIB/include/**` y `docs/reference/` |
-| Paquete e instalación | `../CeresBinaries/README.md` |
-| Estado de fases | `../CeresASM/plan/v2/STATUS.md` |
+| Machine, memory, ISA, IRQ, `ceres` | `../CeresASM/docs/*.md` and `ceres --help` |
+| Language and `ceresc` | `../Ceres-C/docs/*.md` and `ceresc --help` |
+| Library headers and API | `../Ceres Projects/Ceres STDLIB/include/**` and `docs/reference/` |
+| Package and installation | `../CeresBinaries/README.md` |
+| Phase status | `../CeresASM/plan/v2/STATUS.md` |
 
-**Regla de estilo:** una línea que mencione algo de la máquina v1 (p. ej. `--soft-double`) debe llevar
-el marcador `lint:v1` para que el lint la permita (solo la guía de migración debería necesitarlo).
+**House style:** a line that mentions something from the v1 machine (e.g. `--soft-double`) must
+carry the marker `lint:v1` so the lint allows it (only the migration guide should need it).
 
-Versiones y commits contra los que se verificó: [tools/versions.json](tools/versions.json).
+Versions and commits the wiki was verified against: [tools/versions.json](tools/versions.json).
 
-**CI.** En cada push, `.github/workflows/ci.yml` corre `selfcheck` (render + lint) y `build`. La
-carpeta `dist/` es generada y **no se versiona**.
+**CI.** On every push, `.github/workflows/ci.yml` runs `selfcheck` (render + lint) and `build`.
+The `dist/` directory is generated and **not** versioned.
 
-## Cómo se corresponde con Ceres
+## How it maps to Ceres
 
-- El código de ejemplo es **Ceres-C real** contra la API de `Ceres STDLIB`.
-- Los fragmentos de consola usan `ceresc` y `ceres`.
-- Las guías de compilación y de línea de comandos describen los tres repositorios reales.
-- Las demos de la wiki son **versiones en JavaScript** de los mismos juegos, para poder
-  jugarlos sin compilar; el código Ceres completo está en cada página.
+- The example code is **real Ceres-C** against the `Ceres STDLIB` API.
+- The console snippets use `ceresc` and `ceres`.
+- The build guides and the command-line pages describe the three real repositories.
+- The wiki demos are **JavaScript versions** of the same games, so you can play them without
+  compiling; the full Ceres code is in each page.

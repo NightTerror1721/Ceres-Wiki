@@ -54,7 +54,7 @@
         { "slug": "lib-rand-hash", "title": "Aleatoriedad y hash" },
         { "slug": "lib-varios", "title": "Ctype, locale, señales y setjmp" },
         { "slug": "lib-unicode", "title": "Unicode: UTF-8 y wchar" },
-        { "slug": "lib-f64", "title": "El double de software" }
+        { "slug": "lib-float", "title": "Float y double" }
       ]
     },
     {

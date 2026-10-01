@@ -128,7 +128,7 @@ intencionado: un `CERES_PATH` obsoleto no debe ejecutar otro binario en silencio
 | `-Os` | Como `-O1` sin *inlining* ni jump tables |
 | `-Og` | Como `-O1` sin inlining, reuso de slots, tail calls, IV-SR ni loop idioms |
 | `-f<opt>` / `-fno-<opt>` | Activa/desactiva un pase concreto (se aplican en orden) |
-| `-fsoft-double` | `double` pasa a ser un IEEE binary64 real en software |
+| `-fshort-double` | `double` pasa a ser un `float` (binary32) |
 | `--stats` / `-fstats` | Informe del optimizador (por stderr) |
 
 Los 28 pases conmutables individualmente:

@@ -13,5 +13,5 @@
     "Ceres STDLIB": "d56c09f",
     "CeresBinaries": "cae2205"
   },
-  "_comment": "Fija las versiones/commits contra los que se verifico la wiki. Actualizalo al regenerar las tablas (tools/gen/). Ver PLAN-MODERNIZACION.md."
+  "_comment": "Pins the versions/commits the wiki was verified against. Update it when regenerating the tables (tools/gen/). See MODERNIZATION-PLAN.md."
 }

@@ -68,7 +68,7 @@ for each demo:
 ```shell title="Run a library example"
 > tools\example.ps1 hello
 > tools\example.ps1 snake          # opens a window
-> tools\example.ps1 snake -Terminal
+> tools\example.ps1 snake --headless
 ```
 
 <Callout type="warn" title="Optional modules are requested with // USE:">
@@ -92,14 +92,13 @@ A program that installs its own vector handler must **not** link them.
 | `-Werror` | Turn warnings into errors |
 | `-S` | Stop at assembly (`.casm`), do not link |
 | `--emit-ir` | Print the optimized IR |
-| `--soft-double` | Make `double` a real 64-bit IEEE binary64 |
+| `-fshort-double` | Make `double` a `float` (binary32) |
 | `--` | Everything after this goes to your program |
 | `--stats` | Count instructions, inlining and jump tables |
 
-<Callout type="tip" title="-fsoft-double">
-By default `double` is `float` (the machine only has 32-bit floating point). With
-`-fsoft-double` the compiler uses a **software binary64** from the library
-(`ceres/f64.h`). It costs one call per operation, but gives real `double` precision.
+<Callout type="tip" title="-fshort-double">
+By default `double` is **native binary64** (register pairs). With `-fshort-double` the
+compiler makes `double` a `float` (binary32): faster, less precise.
 </Callout>
 
 ## Next step

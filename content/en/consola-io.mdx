@@ -70,7 +70,8 @@ int ok   = sscanf("3 4", "%d %d", &a, &b);
 ```
 
 `scanf` supports `%d %i %u %x %X %o %c %s %f %e %g %[set] %p %n %%`, a width, `*` to
-discard, and length modifiers. `%lf` is a `float` (except with `--soft-double`).
+discard, and length modifiers. `%f` stores a `float`; `%lf` and `%Lf` a `double`
+(with `-fshort-double`, a `float`).
 
 ## The error stream
 
