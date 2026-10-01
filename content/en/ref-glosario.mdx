@@ -1,0 +1,36 @@
+# Glossary
+
+## Terms
+
+Terms that recur across the wiki, with what they mean here.
+
+| Term | Meaning |
+| --- | --- |
+| **CeresASM** | The project that builds the virtual machine, the assembler, the linker and the debugger; the `ceres` tool |
+| **Ceres-C** | The C compiler project; the `ceresc` tool |
+| **Ceres STDLIB** | The C library and the `ceres/` machine API, plus the shell |
+| **CeresBinaries** | The project that builds installers/packages from the three, with them as submodules |
+| **CASM** | The machine's assembly language (`.casm` source) |
+| **`.cres`** | A linked Ceres program (a binary the machine runs) |
+| **`.cobj` / `.car`** | An object / an archive of objects (like `.o` and `.a`) |
+| **MMIO** | Memory-mapped I/O: device registers reached through ordinary loads and stores |
+| **Slot** | One of 256 64-KiB windows from `0xFF000000`, one per device |
+| **Profile** | A named machine size: its clocks, RAM, VRAM and video/audio ceilings |
+| **Cycle** | The CPU's unit of time; an instruction costs a fixed number of them |
+| **Virtual time** | The machine's time, derived from cycles - not the host's, so runs are reproducible |
+| **Scheduler / event** | Devices act on events booked at an absolute cycle |
+| **Halt** | The machine stops executing; its clock jumps to the next event |
+| **V0…V6** | The GPU's video levels: terminal, framebuffer, Retro 2D, arcade, vector, 3D, programmable 3D |
+| **A0…A4** | The audio levels: tone, PSG, FM+MIDI, sampler, digital audio |
+| **VRAM** | The video memory at `0xA0000000` the GPU reads |
+| **VBlank** | The vertical blank: between frames; `Present` applies and buffers flip here |
+| **Register pair** | Two 32-bit registers that make one 64-bit value (`xN`, `dN`) |
+| **`--stdlib`** | The `ceresc` flag that compiles against the installed library |
+| **`CERES_PATH`** | The directory Ceres is installed in (or its `ceres`) |
+| **HostFs** | The device that lets a program see host files under `--host-dir` |
+| **CeresFS** | The on-disk filesystem the disk device speaks |
+
+<Quiz question="What does a slot mean in Ceres?"
+  options="A CPU instruction slot|A 64-KiB MMIO window for a device|A memory page|A shell command"
+  answer="1"
+  explain="Each device lives in its own 64-KiB slot from 0xFF000000; the MmioBus routes accesses to it."></Quiz>

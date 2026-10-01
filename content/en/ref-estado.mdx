@@ -1,0 +1,68 @@
+# Implementation status
+
+This wiki documents what the machine, the compiler and the library **do**, and marks as
+*planned* what does not exist yet. This page is the single place that says which is which, so no
+other page has to guess.
+
+<Callout type="info" title="Where this comes from">
+The status is CeresASM's `plan/v2/STATUS.md`: **F0–F8 are done** (the v2 machine, the 64-bit
+ISA, the new memory map and profiles, the virtual terminal and GPU V0–V2, the shell). **F9 and
+later are planned**. When a phase closes, this page moves.
+</Callout>
+
+## Done (F0–F8)
+
+| Phase | What it covers |
+| --- | --- |
+| F0 | Specification and measurement |
+| F1 | Device and core reorganisation (32-bit MMIO, the bus, the register maps) |
+| F2 | Clocks and the event scheduler (virtual time, `--speed`, record/replay) |
+| F3 | The 64-bit ISA (register pairs, doubles, the float bank) |
+| F4 | Memory, the new map and profiles (RAM/VRAM/MMIO, 8 profiles, the debug log) |
+| F5 | The window is the computer: GPU V0–V1 and the virtual terminal |
+| F6 | 64-bit in Ceres-C and the STDLIB (`long long`, `double`, `-fshort-double`) |
+| F7 | The Ceres shell (command 3, `sys_run`, the shell commands) |
+| F8 | V2: Retro 2D (tile layers, the affine layer, sprites, the line table) |
+
+## Planned (F9+)
+
+| Phase | What it will add |
+| --- | --- |
+| F9 | Audio A0–A2: tone, PSG, FM and a MIDI sequencer |
+| F10 | V3: Arcade 2D (a command processor, a 2D engine, the blitter retired) |
+| F11 | Audio A3–A4: sampler and digital audio |
+| F12 | Hardware mode for V0–V3 (an SDL_GPU executor) |
+| F13 | V4: 2D vector graphics (paths, fills, gradients, outlines) |
+| F14 | V5: fixed-function 3D |
+| F15 | V6: programmable 3D (CSIR shaders) — optional |
+| F16 | Observability (frame capture, viewers, per-frame stats) |
+
+## Video levels
+
+| Level | Name | Status |
+| --- | --- | --- |
+| V0 | Terminal | Done |
+| V1 | Framebuffer | Done |
+| V2 | Retro 2D | Done |
+| V3–V6 | Arcade / vector / 3D | Planned |
+
+## Audio levels
+
+| Level | Name | Status |
+| --- | --- | --- |
+| A0 | Tone | Planned (F9) |
+| A1 | PSG | Planned (F9) |
+| A2 | FM + MIDI | Planned (F9) |
+| A3 | Sampler | Planned (F11) |
+| A4 | Digital audio | Planned (F11) |
+
+<Callout type="warn" title="A page that says otherwise is wrong">
+If a page describes V3 graphics or A0 sound as if they worked today, it is out of date: the
+`Caps` register reports which video levels there are, and `--max-audio` clamps to A4 ahead of
+the sound devices. Trust this page and the code, and report the drift.
+</Callout>
+
+<Quiz question="Which video levels are implemented today?"
+  options="V0 only|V0–V2|V0–V3|All"
+  answer="1"
+  explain="F5 and F8 closed V0 (terminal), V1 (framebuffer) and V2 (Retro 2D); V3 and up are F10+."></Quiz>

@@ -1,0 +1,65 @@
+# Migrating from v1 to v2
+
+The machine **broke compatibility on purpose**: there is no v1 compatibility layer. If you have
+v1 code or notes, this page is the map of what changed. Every obsolete term in it is marked
+`lint:v1` so the content lint lets it through - this is the one page that should mention them.
+
+## Names that changed
+
+| v1 | v2 | Why |
+| --- | --- | --- |
+| `--terminal` / `-Terminal` | `--headless` (`CERES_HEADLESS=1`) | The machine's window is the computer; "headless" says what it does (lint:v1) |
+| `--memory <bytes>` | `--ram <bytes>` | RAM and VRAM are separate now (lint:v1) |
+| `ceres/textfb.h` (`fb_*`) | `ceres/text.h` (`text_*`) | The text plane is a GPU level (V0), not a host framebuffer (lint:v1) |
+| `ceres/display.h` (`display_*`) | `ceres/fb.h` (`fb_*`) | The bitmap plane is V1 (lint:v1) |
+| `ceres/f64.h`, `ceres/ns64.h` | *(gone)* | `double` is native binary64, not a software type (lint:v1) |
+| `mmio_r8`, `mmio_r16`, `mmio_w8`, `mmio_w16` | `mmio_r32`, `mmio_w32` | MMIO is 32-bit only (lint:v1) |
+| `read_port`, `write_port` | `mmio_r32`, `mmio_w32` | The port API is gone (lint:v1) |
+
+## `double` is native
+
+In v1 `double` was a software type (`--soft-double`, `f64.h`). (lint:v1) In v2 the machine
+computes **IEEE binary64** with its own instructions over **register pairs**: `double` and
+`long double` are 8 bytes and fast by default. `--soft-double` is gone (lint:v1);
+`-fshort-double` makes `double` a `float` (binary32) if you want speed over precision.
+
+```c
+double d = 0.1;             // native binary64, in a register pair
+printf("%.20f\n", d);       // 0.10000000000000000555
+```
+
+## Devices moved
+
+The device map changed from per-device addresses to **grouped slots**. The terminal, timer, DMA
+and keyboard numbers and bases are **different**: the terminal is at `0xFF000000` and IRQ 19,
+the timer `0xFF010000` (IRQ 16/17), the keyboard `0xFF100000` (IRQ 20), the GPU `0xFF400000`
+(IRQ 32–35). Take the map from [Reference: devices](/wiki/ref-dispositivos), never from v1
+memory.
+
+## Memory grew
+
+RAM can reach **2 GiB** and there is a separate **VRAM** (up to 1 GiB) at `0xA0000000`. The
+fixed regions are the same (null page `0x000`, BIOS `0x100`, program from `0x400`, a 4 KiB
+system stack at the top). A profile sets how much a machine has; `--ram`/`--vram` change it.
+
+## The window is the computer
+
+A program **never** writes the host's stdout. Its output goes to the **virtual terminal**, drawn
+on the GPU's text plane. For tests and CI, `--headless` plus `--transcript` captures it byte for
+byte. See [Headless](/wiki/maquina-headless).
+
+## Optional modules are three
+
+v1 had `irq` and `fault`; v2 has **`irq`, `fault` and `mmu`**. The linker still allows one owner
+per vector, so choose one with `// USE: <module>`.
+
+## What did not change
+
+The C subset, the calling convention (now with register pairs for 64-bit), `stdio`/`stdlib`
+semantics, and the deterministic model: the machine's time is virtual and the same input gives
+the same output.
+
+<Quiz question="What replaced `--terminal` in v2? (lint:v1)"
+  options="--no-window|--headless|--console|--text"
+  answer="1"
+  explain="--headless (or CERES_HEADLESS=1): the machine always has a screen; 'headless' says the host opens no window."></Quiz>

@@ -1,0 +1,36 @@
+# Glosario
+
+## Términos
+
+Términos que se repiten por la wiki, con lo que significan aquí.
+
+| Término | Significado |
+| --- | --- |
+| **CeresASM** | El proyecto que construye la máquina virtual, el ensamblador, el enlazador y el depurador; la herramienta `ceres` |
+| **Ceres-C** | El proyecto del compilador C; la herramienta `ceresc` |
+| **Ceres STDLIB** | La librería C y la API de máquina `ceres/`, más la shell |
+| **CeresBinaries** | El proyecto que construye instaladores/paquetes a partir de los tres, con ellos como submódulos |
+| **CASM** | El lenguaje ensamblador de la máquina (fuente `.casm`) |
+| **`.cres`** | Un programa Ceres enlazado (un binario que la máquina ejecuta) |
+| **`.cobj` / `.car`** | Un objeto / un archivo de objetos (como `.o` y `.a`) |
+| **MMIO** | E/S mapeada en memoria: registros de dispositivo alcanzados con cargas y almacenamientos normales |
+| **Slot** | Una de 256 ventanas de 64 KiB desde `0xFF000000`, una por dispositivo |
+| **Perfil** | Un tamaño de máquina con nombre: sus relojes, RAM, VRAM y techos de vídeo/audio |
+| **Ciclo** | La unidad de tiempo de la CPU; una instrucción cuesta un número fijo |
+| **Tiempo virtual** | El tiempo de la máquina, derivado de los ciclos — no el del host, así las ejecuciones son reproducibles |
+| **Planificador / evento** | Los dispositivos actúan sobre eventos reservados en un ciclo absoluto |
+| **Halt** | La máquina deja de ejecutar; su reloj salta al siguiente evento |
+| **V0…V6** | Los niveles de vídeo de la GPU: terminal, framebuffer, Retro 2D, arcade, vectorial, 3D, 3D programable |
+| **A0…A4** | Los niveles de audio: tono, PSG, FM+MIDI, sampler, audio digital |
+| **VRAM** | La memoria de vídeo en `0xA0000000` que lee la GPU |
+| **VBlank** | El borrado vertical: entre fotogramas; `Present` aplica y los búferes se intercambian aquí |
+| **Par de registros** | Dos registros de 32 bits que forman un valor de 64 (`xN`, `dN`) |
+| **`--stdlib`** | La opción de `ceresc` que compila contra la librería instalada |
+| **`CERES_PATH`** | El directorio donde está instalado Ceres (o su `ceres`) |
+| **HostFs** | El dispositivo que deja a un programa ver ficheros del host bajo `--host-dir` |
+| **CeresFS** | El sistema de ficheros en disco que habla el dispositivo de disco |
+
+<Quiz question="¿Qué significa un slot en Ceres?"
+  options="Una ranura de instrucción de CPU|Una ventana MMIO de 64 KiB para un dispositivo|Una página de memoria|Un comando de la shell"
+  answer="1"
+  explain="Cada dispositivo vive en su propia ventana de 64 KiB desde 0xFF000000; el MmioBus enruta los accesos a él."></Quiz>

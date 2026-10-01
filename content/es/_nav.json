@@ -166,6 +166,13 @@
       ]
     },
     {
+      "title": "Guías",
+      "icon": "🧭",
+      "pages": [
+        { "slug": "guia-migracion", "title": "Migrar de v1 a v2" }
+      ]
+    },
+    {
       "title": "Referencia",
       "icon": "📖",
       "pages": [
@@ -173,6 +180,9 @@
         { "slug": "ref-stdlib", "title": "La librería estándar" },
         { "slug": "ref-dispositivos", "title": "Dispositivos" },
         { "slug": "ref-interrupciones", "title": "Interrupciones" },
+        { "slug": "ref-estado", "title": "Estado de implementación" },
+        { "slug": "ref-glosario", "title": "Glosario" },
+        { "slug": "ref-faq", "title": "Preguntas frecuentes" },
         { "slug": "ref-apendice", "title": "Apéndice: registros y ABI" }
       ]
     }

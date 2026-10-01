@@ -1,0 +1,68 @@
+# FAQ
+
+## Where does a program's output go?
+
+To its **virtual terminal**, drawn on the GPU's text plane - never to the host's stdout. With no
+window, capture it with `--transcript`. See [The virtual terminal](/wiki/maquina-terminal).
+
+## Why is `ceres` printing nothing while it runs?
+
+Because the program's output is not `ceres`'s. Use `--transcript out.txt --headless` and read the
+file. `ceres` only speaks when it fails.
+
+## Why does `--help` exit with code 2?
+
+That is on purpose: usage goes to **stderr** and the status is 2, not 0. There is no
+`--version`.
+
+## How do I make `double` faster?
+
+By default it is native binary64 (register pairs) and already fast. If you want the precision of
+a `float`, compile with `-fshort-double` and `double` becomes `float`.
+
+## Which profile should I pick?
+
+`standard` (the default) unless you want a small retro machine (`micro`, `pocket`, `retro`) or
+more (up to `workstation`/`custom`). See [Clock and profiles](/wiki/maquina-perfiles).
+
+## Why does my write past the end of an array fault?
+
+Because in v2 a load or store past the end of RAM is a `MemoryFault` (`OutOfRam`), not silently
+zero; writing `.text` or the page zero/BIOS also faults. That is a bug caught early.
+
+## How do I do graphics?
+
+V0 is the text plane (`ceres/text.h`), V1 the bitmap (`ceres/fb.h`), V2 tiles and sprites
+(`ceres/tiles.h`, `ceres/sprite.h`). `gfx` keeps a surface in RAM for comfortable drawing. See
+[Video](/wiki/api-video).
+
+## How do I play sound?
+
+Not yet: audio is **planned** (F9). See [Implementation status](/wiki/ref-estado).
+
+## How do I add my own library?
+
+Build it into a `.car` with `ceres ar`, write its declarations with `ceresc --emit-decls`, and
+link it with `--decls`/`-l`. See [Wiring the toolchain](/wiki/build-toolchain).
+
+## How do I test a program automatically?
+
+`ceres run prog.cres --headless --speed max --transcript got.txt` and compare. Virtual time
+makes it fast and deterministic. See [Headless](/wiki/maquina-headless).
+
+## The shell does not start
+
+`ceres run` with no program looks for `shell/shell.cres` in `CERES_PATH` (or beside `ceres`). If
+neither has it, it says where it looked. On `micro`, it uses `shell-small.cres`. See
+[The shell](/wiki/maquina-shell).
+
+## Ctrl+C does not stop my program
+
+Ctrl+C is the terminal's: it sets a status bit and raises interrupt 19, which the library turns
+into `SIGINT`. A program that ignores signals keeps running. See
+[The virtual terminal](/wiki/maquina-terminal).
+
+<Quiz question="Where should you look for what is implemented and what is planned?"
+  options="The FAQ|Implementation status|The changelog|The shell"
+  answer="1"
+  explain="/ref-estado (Implementation status) is the single source for F0–F8 done and F9+ planned."></Quiz>

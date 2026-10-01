@@ -1,0 +1,69 @@
+# Estado de implementación
+
+Esta wiki documenta lo que la máquina, el compilador y la librería **hacen**, y marca como
+*previsto* lo que aún no existe. Esta página es el único sitio que dice qué es qué, para que
+ninguna otra tenga que adivinarlo.
+
+<Callout type="info" title="De dónde sale esto">
+El estado es el `plan/v2/STATUS.md` de CeresASM: **F0–F8 están hechas** (la máquina v2, la ISA de
+64 bits, el mapa de memoria y los perfiles nuevos, el terminal virtual y la GPU V0–V2, la shell).
+**F9 y posteriores están previstas**. Cuando cierra una fase, esta página se mueve.
+</Callout>
+
+## Hecho (F0–F8)
+
+| Fase | Qué cubre |
+| --- | --- |
+| F0 | Especificación y medición |
+| F1 | Reorganización de dispositivos y del núcleo (MMIO de 32 bits, el bus, las tablas de registros) |
+| F2 | Relojes y planificador de eventos (tiempo virtual, `--speed`, record/replay) |
+| F3 | La ISA de 64 bits (pares de registros, dobles, el banco float) |
+| F4 | Memoria, el mapa nuevo y perfiles (RAM/VRAM/MMIO, 8 perfiles, el registro de depuración) |
+| F5 | La ventana es el ordenador: GPU V0–V1 y el terminal virtual |
+| F6 | 64 bits en Ceres-C y la STDLIB (`long long`, `double`, `-fshort-double`) |
+| F7 | La shell de Ceres (comando 3, `sys_run`, los comandos de la shell) |
+| F8 | V2: Retro 2D (capas de tiles, capa afín, sprites, tabla de líneas) |
+
+## Previsto (F9+)
+
+| Fase | Qué añadirá |
+| --- | --- |
+| F9 | Audio A0–A2: tono, PSG, FM y un secuenciador MIDI |
+| F10 | V3: Arcade 2D (procesador de comandos, motor 2D, el blitter retirado) |
+| F11 | Audio A3–A4: sampler y audio digital |
+| F12 | Modo hardware para V0–V3 (un ejecutor SDL_GPU) |
+| F13 | V4: gráficos vectoriales 2D (trazados, rellenos, degradados, contornos) |
+| F14 | V5: 3D de función fija |
+| F15 | V6: 3D programable (shaders CSIR) — opcional |
+| F16 | Observabilidad (captura de fotogramas, visores, estadísticas por fotograma) |
+
+## Niveles de vídeo
+
+| Nivel | Nombre | Estado |
+| --- | --- | --- |
+| V0 | Terminal | Hecho |
+| V1 | Framebuffer | Hecho |
+| V2 | Retro 2D | Hecho |
+| V3–V6 | Arcade / vectorial / 3D | Previsto |
+
+## Niveles de audio
+
+| Nivel | Nombre | Estado |
+| --- | --- | --- |
+| A0 | Tono | Previsto (F9) |
+| A1 | PSG | Previsto (F9) |
+| A2 | FM + MIDI | Previsto (F9) |
+| A3 | Sampler | Previsto (F11) |
+| A4 | Audio digital | Previsto (F11) |
+
+<Callout type="warn" title="Una página que diga otra cosa está mal">
+Si una página describe los gráficos V3 o el sonido A0 como si funcionaran hoy, está
+desactualizada: el registro `Caps` informa de qué niveles de vídeo hay, y `--max-audio` recorta a
+A4 antes de que lleguen los dispositivos de sonido. Confía en esta página y en el código, y
+reporta la desincronización.
+</Callout>
+
+<Quiz question="¿Qué niveles de vídeo están implementados hoy?"
+  options="Solo V0|V0–V2|V0–V3|Todos"
+  answer="1"
+  explain="F5 y F8 cerraron V0 (terminal), V1 (framebuffer) y V2 (Retro 2D); V3 y superiores son F10+."></Quiz>

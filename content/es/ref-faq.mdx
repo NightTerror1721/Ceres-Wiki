@@ -1,0 +1,68 @@
+# Preguntas frecuentes
+
+## ¿A dónde va la salida de un programa?
+
+A su **terminal virtual**, dibujado en el plano de texto de la GPU — nunca al stdout del host.
+Sin ventana, captúrala con `--transcript`. Ver [El terminal virtual](/wiki/maquina-terminal).
+
+## ¿Por qué `ceres` no imprime nada mientras corre?
+
+Porque la salida del programa no es de `ceres`. Usa `--transcript out.txt --headless` y lee el
+fichero. `ceres` solo habla cuando falla.
+
+## ¿Por qué `--help` sale con código 2?
+
+Es a propósito: el uso va a **stderr** y el estado es 2, no 0. No hay `--version`.
+
+## ¿Cómo hago `double` más rápido?
+
+Por defecto es binary64 nativo (pares de registros) y ya es rápido. Si quieres la precisión de
+un `float`, compila con `-fshort-double` y `double` pasa a ser `float`.
+
+## ¿Qué perfil elijo?
+
+`standard` (el de por defecto) salvo que quieras una máquina retro pequeña (`micro`, `pocket`,
+`retro`) o más (hasta `workstation`/`custom`). Ver [Reloj y perfiles](/wiki/maquina-perfiles).
+
+## ¿Por qué falla mi escritura pasada el final de un array?
+
+Porque en la v2 una carga o almacenamiento pasado el final de la RAM es un `MemoryFault`
+(`OutOfRam`), no un cero silencioso; escribir `.text` o la página cero/BIOS también falla. Es un
+bug cazado pronto.
+
+## ¿Cómo hago gráficos?
+
+V0 es el plano de texto (`ceres/text.h`), V1 el bitmap (`ceres/fb.h`), V2 tiles y sprites
+(`ceres/tiles.h`, `ceres/sprite.h`). `gfx` guarda una superficie en RAM para dibujar cómodo. Ver
+[Vídeo](/wiki/api-video).
+
+## ¿Cómo reproduzco sonido?
+
+Aún no: el audio está **previsto** (F9). Ver [Estado de implementación](/wiki/ref-estado).
+
+## ¿Cómo añado mi propia librería?
+
+Constrúyela en un `.car` con `ceres ar`, escribe sus declaraciones con `ceresc --emit-decls`, y
+enlázala con `--decls`/`-l`. Ver [Montar el toolchain](/wiki/build-toolchain).
+
+## ¿Cómo pruebo un programa automáticamente?
+
+`ceres run prog.cres --headless --speed max --transcript got.txt` y compara. El tiempo virtual
+lo hace rápido y determinista. Ver [Headless](/wiki/maquina-headless).
+
+## La shell no arranca
+
+`ceres run` sin programa busca `shell/shell.cres` en `CERES_PATH` (o junto a `ceres`). Si ninguno
+lo tiene, dice dónde buscó. En `micro`, usa `shell-small.cres`. Ver
+[La shell](/wiki/maquina-shell).
+
+## Ctrl+C no para mi programa
+
+Ctrl+C es del terminal: pone un bit de estado y lanza la interrupción 19, que la librería
+convierte en `SIGINT`. Un programa que ignora señales sigue corriendo. Ver
+[El terminal virtual](/wiki/maquina-terminal).
+
+<Quiz question="¿Dónde deberías mirar qué está implementado y qué está previsto?"
+  options="En las FAQ|En Estado de implementación|En el changelog|En la shell"
+  answer="1"
+  explain="/ref-estado (Estado de implementación) es la única fuente de F0–F8 hecho y F9+ previsto."></Quiz>

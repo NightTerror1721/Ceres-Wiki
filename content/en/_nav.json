@@ -166,6 +166,13 @@
       ]
     },
     {
+      "title": "Guides",
+      "icon": "🧭",
+      "pages": [
+        { "slug": "guia-migracion", "title": "Migrating from v1 to v2" }
+      ]
+    },
+    {
       "title": "Reference",
       "icon": "📖",
       "pages": [
@@ -173,6 +180,9 @@
         { "slug": "ref-stdlib", "title": "The standard library" },
         { "slug": "ref-dispositivos", "title": "Devices" },
         { "slug": "ref-interrupciones", "title": "Interrupts" },
+        { "slug": "ref-estado", "title": "Implementation status" },
+        { "slug": "ref-glosario", "title": "Glossary" },
+        { "slug": "ref-faq", "title": "FAQ" },
         { "slug": "ref-apendice", "title": "Appendix: registers and ABI" }
       ]
     }
