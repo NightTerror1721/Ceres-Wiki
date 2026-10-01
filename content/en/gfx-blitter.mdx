@@ -1,0 +1,85 @@
+# The blitter
+
+The **blitter** is a machine device (`0xFF0C0000`) that performs rectangle operations on
+RGB32 surfaces **in the host**, at zero instruction cost to your program. `gfx` uses it when
+present; this page is so you can use it directly or know what is going on underneath.
+
+## Check it exists
+
+```c
+#include "ceres/blitter.h"
+
+if (blitter_available())
+    puts("there is a blitter");
+```
+
+An empty slot reads all ones, so `blitter_available()` detects it.
+
+## Operations
+
+A surface is the address of the first pixel of a rectangle and its **stride** (bytes from
+one row to the next).
+
+```c
+blitter_fill(dst, dst_stride, w, h, color);
+blitter_copy(dst, dst_stride, src, src_stride, w, h);              // overlap allowed
+blitter_copy_key(dst, dst_stride, src, src_stride, w, h, key);     // skip the key colour
+blitter_copy_scaled(dst, dst_stride, src, src_stride, w, h, scale); // 1..8
+blitter_copy_indexed(dst, dst_stride, src8, src_stride, w, h, palette, key);
+```
+
+All return `0`, or `-1` if there is no blitter or a row runs outside RAM.
+
+`blitter_copy_indexed` takes 8-bit pixels and translates them through a **256-colour
+palette**; with `key` equal to `-1` it draws all of them, and with `0..255` it leaves that
+index out.
+
+```c
+unsigned int palette[256];
+unsigned char indices[64 * 64];
+blitter_copy_indexed(dest, 320 * 4, indices, 64, 64, 64, palette, -1);
+```
+
+## How gfx uses it
+
+```c
+gfx_use_blitter(1);    // default
+```
+
+With the blitter active, `gfx_clear`, `gfx_rect_fill`, `gfx_blit`, `gfx_blit_key` and
+`gfx_blit_scaled` are done by hardware; the rest (lines, circles, triangles) stays in
+software. The result is identical pixel for pixel, so you can compare outputs.
+
+<Callout type="info" title="Why it matters for a game">
+Filling the background and copying sprites are the most frequent operations in a 2D game.
+With the blitter, that work consumes **no instructions**, so your per-frame budget is left
+entirely for logic.
+</Callout>
+
+## Hardware transparency
+
+```c
+blitter_copy_key(dst, stride, sprite, sstride, w, h, RGB(255, 0, 255));
+```
+
+This is exactly what `gfx_blit_key` does inside. The flip side of the indexed palette is
+ideal for sprites with few colours: one byte per pixel and a palette you can change to
+"recolour" the same sprite (say, an enemy in three shades).
+
+## A tile engine with the blitter
+
+```c
+/* a strip of indexed 16x16 sprites, 8 sprites per row */
+void draw_tile(int dst_x, int dst_y, int tile)
+{
+    blitter_copy_indexed(
+        screen + dst_y * (320 * 4) + dst_x * 4, 320 * 4,
+        tiles + tile * 16,                                   /* 1 byte/pixel */
+        16, 16, 16, palette, 0);                             /* index 0 transparent */
+}
+```
+
+<Quiz question="Which key makes blitter_copy_indexed draw ALL pixels?"
+  options="0|-1|255|NULL"
+  answer="1"
+  explain="key = -1 draws all; a value 0..255 leaves that palette index out."></Quiz>

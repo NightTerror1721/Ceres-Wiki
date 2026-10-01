@@ -1,0 +1,111 @@
+# Compilar el compilador (Ceres-C)
+
+**Ceres-C** es el compilador que convierte C (un subconjunto) en ensamblador CeresASM legible.
+De aquí sale **`ceresc`**, la herramienta que preprocesa, compila, ensambla, enlaza y ejecuta
+(con `--run`).
+
+## 1. Requisitos
+
+| Requisito | Detalle |
+|---|---|
+| **CMake** | 3.28 o superior |
+| **Compilador C++23** | MSVC, GCC 15 o Clang 18 |
+| **Ninja** | Todos los presets usan *Ninja Multi-Config* |
+| **Dependencias** | **Ninguna**: no hay terceros, ni gestor de paquetes, ni fuentes generadas |
+
+<Callout type="tip" title="Ceres-C no necesita CeresASM para compilar">
+Compilar a `.casm` no depende de la máquina virtual. Solo necesitas un `ceres` (de CeresASM)
+cuando usas `--run` o quieres ejecutar los tests de extremo a extremo.
+</Callout>
+
+## 2. Configurar y compilar
+
+Desde la raíz del repositorio:
+
+```shell title="GCC"
+> cmake --preset gcc
+> cmake --build --preset gcc-debug
+```
+
+```shell title="MSVC (desde un símbolo del sistema de VS)"
+> cmake --preset msvc
+> cmake --build --preset msvc-release
+```
+
+Presets de configuración: `msvc`/`msvc-ipo`, `ninja`, `gcc`/`gcc-ipo`, `clang`/`clang-ipo`.
+Cada uno tiene presets de compilación `-debug` y `-release`:
+
+```shell
+> cmake --build --preset gcc-release
+> cmake --build --preset clang-ipo-release
+```
+
+CI compila con avisos como errores y un compilador fijo:
+
+```shell
+> cmake --preset gcc -DCMAKE_CXX_COMPILER=g++-15 -DCERESC_WARNINGS_AS_ERRORS=ON
+> cmake --build --preset gcc-debug
+```
+
+## 3. Dónde queda `ceresc`
+
+```
+build/<preset>/bin/<Debug|Release>/ceresc.exe
+```
+
+Por ejemplo: `build/gcc/bin/Debug/ceresc` (Linux) o `build/msvc/bin/Release/ceresc.exe`
+(Windows). Las bibliotecas estáticas van a `build/<preset>/lib/`.
+
+## 4. Opciones de CMake
+
+| Opción | Defecto | Qué hace |
+|---|---|---|
+| `CERESC_BUILD_TESTS` | ON en el proyecto raíz | Compila las suites de test |
+| `CERESC_WARNINGS_AS_ERRORS` | OFF | Convierte avisos en errores |
+| `CERESC_ENABLE_IPO` | OFF | Optimización entre módulos en Release |
+
+## 5. Cómo está organizado por dentro
+
+El compilador son varias bibliotecas estáticas en cadena, más la aplicación:
+
+| Biblioteca | Contenido |
+|---|---|
+| `ceresc::support` | Utilidades base, diagnósticos, opciones de optimización |
+| `ceresc::preprocessor` | `#include`, macros, condicionales |
+| `ceresc::lexer` | Tokenizador |
+| `ceresc::ast` | Árbol de sintaxis y tipos |
+| `ceresc::parser` | Analizador sintáctico |
+| `ceresc::sema` | Análisis semántico y comprobación de tipos |
+| `ceresc::ir` | Representación intermedia y optimizador |
+| `ceresc::codegen` | Generación de CASM |
+| `ceresc::driver` | Orquestación de todo el pipeline |
+| **`ceresc`** | La aplicación (`apps/ceresc`) |
+
+## 6. Probar que funciona
+
+```shell title="Tests"
+> ctest --preset gcc-debug
+```
+
+`ceresc --version` y `ceresc --help` no necesitan fichero de entrada (salen con estado 0):
+
+```shell
+> build/gcc/bin/Debug/ceresc --version
+ceresc 0.1.0
+```
+
+<Callout type="info" title="Los tests de extremo a extremo necesitan un ceres">
+Las suites `e2e` y `examples` compilan **y ejecutan** programas, así que necesitan un
+`ceres`. Se saltan (no fallan) si no lo encuentran. Puedes indicarles dónde está:
+
+```shell
+> CERESC_CERES_PATH=../CeresASM/Ceres/build/gcc/bin/Release ctest --preset gcc-debug
+```
+
+La variable es un **directorio** que contiene `ceres`/`ceres.exe`.
+</Callout>
+
+<Quiz question="¿Qué hace falta para compilar a .casm con ceresc?"
+  options="ceres (CeresASM) obligatoriamente|Solo el propio ceresc|Un enlazador externo|Python"
+  answer="1"
+  explain="La compilación a assembly no depende de la VM; ceres solo se necesita para --run y los tests e2e."></Quiz>

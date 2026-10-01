@@ -1,0 +1,126 @@
+# Maps and sets
+
+They all live in `ceres/ds/`. Choose based on the key type and whether you need **order**.
+
+## `hashmap` — `char*` → `void*`
+
+The simplest: text keys, pointer values. It copies the key; it never touches the value.
+
+```c
+#include "ceres/ds/hashmap.h"
+
+struct hashmap m;
+hashmap_init(&m, 16);
+hashmap_set(&m, "lives", (void*)3);
+if (hashmap_has(&m, "lives"))
+    printf("%d\n", (int)hashmap_get(&m, "lives"));
+hashmap_remove(&m, "lives");
+hashmap_free(&m);
+```
+
+## `gmap` — fixed-size key and value (copies)
+
+When the key is not text: integers, structs… `key_size`/`value_size` in bytes.
+
+```c
+#include "ceres/ds/gmap.h"
+#include "ceres/ds/generic.h"
+
+struct gmap m;
+gmap_init(&m, sizeof(int), sizeof(float), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+
+int k = 3;  float v = 9.5f;
+gmap_set(&m, &k, &v);
+
+float* f = (float*)gmap_get(&m, &k);
+gmap_free(&m);
+```
+
+`generic.h` gives you `DS_DEFAULT_HASH(T)`/`DS_DEFAULT_EQ(T)`/`DS_DEFAULT_CMP(T)` for `int`,
+`unsigned`, `float`, `char*` and `const char*`.
+
+## `hset` — a hash set
+
+`gmap` with no value: "have I already seen this key?".
+
+```c
+#include "ceres/ds/hset.h"
+struct hset s;
+hset_init(&s, sizeof(int), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+int k = 7;
+if (hset_add(&s, &k)) puts("new");
+hset_free(&s);
+```
+
+## Ordered maps (tree)
+
+`omap`/`oset` store in a red-black tree: **in-order** traversal and guaranteed O(log n).
+
+```c
+#include "ceres/ds/omap.h"
+struct omap m;
+omap_init(&m, sizeof(int), sizeof(int), DS_DEFAULT_CMP(int));
+int k = 3, v = 30;
+omap_set(&m, &k, &v);
+
+for (const void* key = omap_first_key(&m); key; key = omap_next_key(&m, key))
+    printf("%d -> %d\n", *(const int*)key, *(const int*)omap_get(&m, key));
+omap_free(&m);
+```
+
+## Ordered maps as a vector (fast to read)
+
+`flatmap`/`flatset`: a sorted vector + binary search. Best for tables built once and read
+many times.
+
+```c
+#include "ceres/ds/flatmap.h"
+struct flatmap m;
+fmap_init(&m, sizeof(int), sizeof(int), DS_DEFAULT_CMP(int));
+
+int k = 3, v = 30;
+fmap_set(&m, &k, &v);                       // O(n): writes are rare
+int* found = (int*)fmap_get(&m, &k);        // O(log n)
+
+/* walk in key order */
+for (unsigned int i = 0; i < fmap_len(&m); i++)
+{
+    const int* pair = (const int*)fmap_pair_at(&m, i);   // key, value
+}
+fmap_free(&m);
+```
+
+## One key → several values: `multimap`
+
+```c
+#include "ceres/ds/multimap.h"
+struct multimap m;
+mm_init(&m, sizeof(int), sizeof(int), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+
+int k = 1, a = 10, b = 20;
+mm_add(&m, &k, &a);
+mm_add(&m, &k, &b);
+printf("%u values\n", mm_count(&m, &k));    // 2
+```
+
+## Which do I choose?
+
+| I need… | Structure |
+|---|---|
+| Text → pointer, nothing else | `hashmap` |
+| A fixed-size key | `gmap` |
+| Membership only | `hset` |
+| To walk **in order** and many writes | `omap` / `oset` |
+| A table built once, read many times | `flatmap` / `flatset` |
+| Several values per key | `multimap` |
+
+<Callout type="info" title="Comparators and hashes">
+The ones that take `hash`/`eq`/`cmp` take function pointers. `generic.h` saves you writing
+them for common types; for a struct of your own, write a one-line comparison. The `cmp`
+*convention*: `cmp(a,b) < 0` means `a` goes before `b`.
+</Callout>
+
+<Quiz question="Which structure keeps keys ordered and lets you walk them in order?"
+  options="hashmap|omap|vector|gmap by itself"
+  answer="1"
+  explain="omap/oset use a red-black tree and offer in-order traversal; hashmap/gmap do not guarantee order."></Quiz>

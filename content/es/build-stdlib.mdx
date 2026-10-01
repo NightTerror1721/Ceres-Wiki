@@ -1,0 +1,135 @@
+# Compilar la librería estándar
+
+La **librería estándar** es este repositorio. Se compila una vez por nivel de optimización y
+se empaqueta en un **archivo** (`libceres.car`) que tus programas enlazan sin volver a
+compilarla.
+
+## 1. Requisitos
+
+Solo necesitas las dos herramientas ya compiladas:
+
+- **`ceresc`** (de Ceres-C) para convertir los `.c` en `.casm`.
+- **`ceres`** (de CeresASM) para ensamblar (`asm -c`) y archivar (`ar`).
+
+Los scripts las buscan en este orden:
+
+<Steps>
+  <Step title="Variables de entorno">
+    **`CERESC`** (ruta al ejecutable) y **`CERES_PATH`** (la carpeta que lo contiene, o el
+    propio ejecutable). `CERES_DIR`, su nombre antiguo, también vale.
+  </Step>
+  <Step title="Checkouts hermanos">
+    `../../Ceres-C` y `../../CeresASM` respecto a esta carpeta.
+  </Step>
+  <Step title="PATH">
+    Si están en la variable `PATH`, se usan.
+  </Step>
+</Steps>
+
+## 2. Construirla
+
+```shell title="Desde la raíz de la librería"
+> make                 # compila a -O0, -O1 y -O2, y verifica
+```
+
+o directamente el script:
+
+```shell
+> powershell -File tools/mklib.ps1
+> powershell -File tools/mklib.ps1 -Levels 2      # solo -O2
+> powershell -File tools/mklib.ps1 -NoVerify      # solo los archivos
+```
+
+<Output title="Lo que hace por cada nivel">
+-O0 : compiling 100 C files
+-O0 : assembling 107 units
+build/lib/O0/libceres.car: 107 objects, ... bytes
+... (repite para -O1 y -O2)
+done
+</Output>
+
+El script, para cada nivel:
+
+1. **Compila** cada `src/**/*.c` a `.casm` con `ceresc` (y escribe las declaraciones).
+2. **Ensambla** cada `.casm` (generado y escrito a mano en `asm/`) a un `.cobj`.
+3. **Archiva** todos los objetos en `libceres.car` con `ceres ar`.
+4. **Verifica** (solo en `-O2`) construyendo dos programas contra el archivo y ejecutándolos.
+
+## 3. Dónde queda
+
+```
+build/lib/O0/libceres.car        build/lib/O0/libceres.decls.casm
+build/lib/O1/...                 build/lib/O2/...
+build/libceres.car               (copia del -O2, donde siempre ha estado)
+```
+
+- **`libceres.car`** es el archivo de objetos.
+- **`libceres.decls.casm`** son las declaraciones, lo que se pasa a `ceresc --decls`.
+
+<Callout type="info" title="El archivo solo aporta lo que usas">
+A diferencia de los objetos dados por nombre, los **miembros de un archivo** solo se enlazan
+si resuelven un nombre que nada más define. Un programa que llama a una rutina lleva esa
+rutina; los módulos que atan vectores de interrupción (`irq`, `fault`, `mmu`) se quedan fuera
+salvo que los pidas.
+</Callout>
+
+## 4. Usarla
+
+```shell title="Compilar un programa contra el archivo"
+> ceresc prog.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+Los tres argumentos clave: el `.car` (la librería), `--decls` (sus declaraciones) y
+`-I include` (sus cabeceras). No se vuelve a compilar nada de la librería.
+
+## 5. Módulos opcionales con `// USE:`
+
+Hay módulos que el programa pide con una línea al principio del fuente:
+
+```c
+// USE: irq        // alarma y bucle de juego con pausa
+// USE: fault      // informes de fallo
+// USE: mmu        // paginación desde C
+```
+
+El script de tests los añade a la línea de `ceresc`. **Un programa que ata su propio vector
+no debe enlazar el módulo que también lo posee** (el enlazador admite un dueño por vector).
+
+## 6. Probar la librería
+
+```shell title="Suite completa"
+> make test
+> powershell -File tools/runtests.ps1
+```
+
+Cada test se compila y ejecuta a **-O0, -O1 y -O2**, y su salida debe ser **idéntica byte a
+byte** en los tres. Además:
+
+```shell
+> make headers                        # cada cabecera compila por sí sola
+> make test-test_malloc               # un solo test
+> make update-test_malloc             # reescribe el .expected (¡revísalo!)
+```
+
+<Callout type="warn" title="Los tests comparan bytes">
+Un NUL de más (por ejemplo, un store de palabra a un registro de byte) hace fallar un test.
+Es justo lo que se quiere: la máquina es determinista y la salida debe serlo también.
+</Callout>
+
+## 7. Recompilar la librería con opciones
+
+Los ajustes de compilación de la librería están en `include/ceres/config.h` y se cambian con
+`-D...`:
+
+```c
+#define CERES_ATEXIT_SLOTS      32
+#define CERES_HEAP_STACK_RESERVE 16384
+#define CERES_HEAP_DEBUG        0
+#define FS_MAX_OPEN             8
+#define TASK_MAX                16
+```
+
+<Quiz question="¿Qué formato tiene la librería que enlazan los programas?"
+  options="libceres.cres|libceres.car|libceres.dll|libceres.casm"
+  answer="1"
+  explain=".car es el archivo de objetos; .cres es un programa ya enlazado."></Quiz>

@@ -1,0 +1,110 @@
+# Instalar y compilar
+
+Necesitas tres cosas: el **compilador** (`ceresc`), la **máquina** (`ceres`) y esta
+**librería estándar**. En un equipo de desarrollo se suelen tener los tres repositorios
+como hermanos:
+
+```
+Projects/
+├─ CeresASM/        → de aquí sale ceres.exe
+├─ Ceres-C/         → de aquí sale ceresc.exe
+└─ Ceres Projects/
+   └─ Ceres STDLIB/ → esta librería
+```
+
+## 1. Comprobar las herramientas
+
+<Callout type="info" title="Buscando el binario">
+Los scripts de la librería buscan `ceresc`/`ceres` junto al checkout (`../../Ceres-C`,
+`../../CeresASM`) o por las variables de entorno **`CERESC`** y **`CERES_PATH`**.
+</Callout>
+
+```shell title="Comprobar que están en el PATH"
+> ceresc --version
+> ceres --help
+```
+
+## 2. Compilar la librería
+
+La librería se construye **una vez por nivel de optimización** (`-O0`, `-O1`, `-O2`) en
+`build/lib/O*/libceres.car`, junto a un fichero de declaraciones.
+
+```shell title="Compilar la librería completa"
+> make                 # o, directamente:
+> powershell -File tools/mklib.ps1
+```
+
+<Output title="Lo que verás al terminar">
+-O0 : compiling 100 C files
+-O0 : assembling 107 units
+build/lib/O0/libceres.car: 107 objects, ... bytes
+... (repite para -O1 y -O2)
+done
+</Output>
+
+## 3. Compilar y ejecutar un programa
+
+El compilador hace todo el trabajo: preprocesa, compila, ensambla, enlaza contra el
+archivo de la librería y **ejecuta** con `--run`. Sólo se compila tu programa; la librería
+viene del `.car`.
+
+```shell title="Compilar y ejecutar contra la librería"
+> ceresc prog.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+Los tres argumentos clave son:
+
+| Argumento | Para qué |
+|---|---|
+| `build/lib/O2/libceres.car` | El archivo de la librería (solo se enlaza lo que usas) |
+| `--decls build/lib/O2/libceres.decls.casm` | Las declaraciones de lo que la librería define |
+| `-I include` | Dónde están las cabeceras (`stdio.h`, `ceres/gfx.h`, …) |
+
+## 4. Añadir la librería a un proyecto
+
+En un proyecto propio basta con llamar a `ceresc` con esos argumentos. Hay un ejemplo ya
+preparado para cada demo:
+
+```shell title="Ejecutar un ejemplo de la librería"
+> tools\example.ps1 hello
+> tools\example.ps1 snake          # abre una ventana
+> tools\example.ps1 snake -Terminal
+```
+
+<Callout type="warn" title="Los módulos opcionales se piden con // USE:">
+Dos módulos atan vectores de interrupción y el enlazador sólo admite **un dueño por
+vector**: `irq` (alarma, bucle de juego con pausa) y `fault` (informes de fallo). Un
+programa que los quiera lo pide con una línea al principio:
+
+```c
+// USE: irq
+```
+
+Un programa que instala su propio manejador de vector **no** debe enlazarlos.
+</Callout>
+
+## 5. Opciones útiles del compilador
+
+| Opción | Efecto |
+|---|---|
+| `-O0` / `-O1` / `-O2` | Nivel de optimización (`-O1` es el defecto) |
+| `-Os` / `-Og` | Optimiza por tamaño / para depurar |
+| `-Werror` | Convierte avisos en errores |
+| `-S` | Para en el ensamblador (`.casm`) y no enlaza |
+| `--emit-ir` | Imprime el IR optimizado |
+| `--soft-double` | Hace que `double` sea un IEEE binary64 real de 64 bits |
+| `--` | Todo lo que sigue son argumentos para tu programa |
+| `--stats` | Cuenta instrucciones, inlining y saltos de tabla |
+
+<Callout type="tip" title="-fsoft-double">
+Por defecto `double` es `float` (la máquina sólo tiene coma flotante de 32 bits). Con
+`-fsoft-double` el compilador usa un **binary64 en software** de la librería
+(`ceres/f64.h`). Cuesta una llamada por operación, pero da la precisión de un `double`.
+</Callout>
+
+## Siguiente paso
+
+<Quiz question="¿Qué fichero le pasas a ceresc para que enlace la librería?"
+  options="El código fuente de la librería|El archivo libceres.car|El binario ceres.exe|El .cres del programa"
+  answer="1"
+  explain="El .car es el archivo de objetos: sólo se enlazan los miembros que resuelven algo que usas."></Quiz>

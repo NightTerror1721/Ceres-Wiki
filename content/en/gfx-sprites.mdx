@@ -1,0 +1,131 @@
+# Sprites, animation and tilemaps
+
+`ceres/sprite.h` gives what every 2D game needs: images with transparency, frame animation,
+tile maps with a camera, and the rectangle tests for collisions.
+
+## Sprites
+
+A sprite **points** at the pixels: it does not copy them, so it can live in `.rodata`.
+
+```c
+#include "ceres/sprite.h"
+
+static const unsigned int hero_px[8 * 8] = { /* ... 64 pixels ... */ };
+static const struct sprite hero = {
+    .w = 8, .h = 8, .px = hero_px, .key = 0xFF00FF   // magenta = transparent
+};
+
+sprite_draw(&hero, x, y);
+sprite_draw_flip(&hero, x, y, 1, 0);      // horizontal mirror
+sprite_draw_scaled(&hero, x, y, 3);       // each pixel 3x3
+```
+
+## Frame animation
+
+```c
+static const struct sprite* const walk[] = { &f1, &f2, &f3, &f4 };
+
+struct anim a;
+anim_init(&a, walk, 4, 8);     // 4 frames, 8 ticks each
+
+/* each game frame */
+anim_update(&a, elapsed_ticks);   // advance and wrap at the end
+const struct sprite* s = anim_frame(&a);
+sprite_draw(s, x, y);
+```
+
+`ticks_per_frame <= 0` freezes the animation. `anim_reset(&a)` goes back to the first.
+
+## Tilemaps with a camera
+
+```c
+static const unsigned char level[] = {
+    0,0,1,1,0,
+    0,1,0,0,1,
+};
+static const struct sprite* const tileset[] = { &grass, &wall };
+
+static const struct tilemap map = {
+    .tile_w = 16, .tile_h = 16,
+    .cols = 5, .rows = 2,
+    .tiles = level,
+    .tileset = tileset
+};
+
+tilemap_draw(&map, cam_x, cam_y);        // only draws the visible tiles
+int t = tilemap_at(&map, px, py);        // tile at a map pixel (-1 outside)
+int t2 = tilemap_tile(&map, col, row);   // tile at a grid cell
+```
+
+<Callout type="info" title="The camera is free">
+`tilemap_draw` receives the map position you want at the top-left corner and draws **only**
+the tiles that fall on screen. Scrolling comes from moving `cam_x`/`cam_y`.
+</Callout>
+
+## Collisions
+
+```c
+struct rect player = { x, y, 16, 16 };
+struct rect wall   = { 64, 0, 16, 32 };
+
+if (rect_overlap(&player, &wall))
+    resolve_collision();
+
+if (rect_contains(&wall, mouse_x, mouse_y))
+    puts("click on the wall");
+```
+
+`rect_overlap` counts as a hit if they share **at least one pixel** (touching edges do not
+count).
+
+## Example: moving a sprite with tilemap collisions
+
+```c title="walk.c"
+// USE: irq
+#include "stdio.h"
+#include "ceres/gfx.h"
+#include "ceres/sprite.h"
+#include "ceres/game.h"
+#include "ceres/input.h"
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 33);
+    input_terminal_fallback(1);
+
+    int x = 40, y = 40;
+    const int V = 3;
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_down(KEY_ESCAPE)) game_quit(&g);
+
+        int dx = 0, dy = 0;
+        if (key_down(KEY_LEFT))  dx -= V;
+        if (key_down(KEY_RIGHT)) dx += V;
+        if (key_down(KEY_UP))    dy -= V;
+        if (key_down(KEY_DOWN))  dy += V;
+
+        /* in a real game: check the tilemap under the four corners */
+        x += dx; y += dy;
+
+        gfx_clear(RGB(24, 30, 44));
+        gfx_rect_fill(64, 0, 16, 32, RGB(90, 100, 120));
+        gfx_rect_fill(x, y, 16, 16, RGB(109, 148, 255));
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Quiz question="Which `key` value in a sprite acts as the transparent colour?"
+  options="0|The background colour|The one in the key field|Any with alpha 0"
+  answer="2"
+  explain="Surfaces have no alpha; the key field says which colour is skipped when drawing."></Quiz>

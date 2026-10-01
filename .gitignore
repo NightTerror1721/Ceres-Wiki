@@ -1,0 +1,10 @@
+# Generado por `node tools/build.js`
+dist/
+
+# Dependencias (la wiki no tiene, pero por si acaso)
+node_modules/
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.log

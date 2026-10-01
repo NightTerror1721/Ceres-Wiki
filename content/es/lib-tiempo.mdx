@@ -1,0 +1,130 @@
+# Tiempo y temporizadores
+
+Ceres tiene **dos relojes** y conviene no confundirlos:
+
+- El **contador de ticks**: instrucciones ejecutadas. Es **determinista** (el mismo valor
+  en cada ejecución) y es la base de la reproducibilidad y del *pacing* de los juegos.
+- Los relojes **reales** (nanosegundos, milisegundos, reloj de pared): dependen del
+  anfitrión y no son deterministas.
+
+## El contador de ticks
+
+```c
+#include "ceres/timer.h"
+
+unsigned int t = timer_ticks();        // 32 bits (envuelve cada ~43 s)
+uint64_t     t64 = timer_ticks64();    // 64 bits: el bueno
+```
+
+Mide **trabajo**, no tiempo. Un `-O2` hace más trabajo por tick que un `-O0`, así que un
+juego que quiera comparar presupuestos debe medir en ticks.
+
+## Esperar
+
+```c
+timer_wait(1000);          // 1000 instrucciones (giro exacto, sin interrupciones)
+timer_wait_until(deadline);
+```
+
+## El reloj de nanosegundos
+
+```c
+uint64_t inicio = timer_nanos64();
+trabajo();
+uint64_t ms = (timer_nanos64() - inicio) / 1000000ull;
+printf("tardó %llu ms\n", ms);
+```
+
+Resolución real del anfitrión: `timer_nanos_resolution()`.
+
+## Esperas reales (que duermen)
+
+Estas **duermen la máquina** (no giran): arman la **alarma** del temporizador y hacen
+`halt`. No necesitan manejador de interrupciones.
+
+```c
+timer_wait_ms(250);        // duerme 250 ms
+timer_wait_us(500);
+timer_wait_ns(1000);
+timer_wait_until_ns64(deadline);
+```
+
+Y sus primos de C:
+
+```c
+#include "time.h"
+sleep(2);                          // segundos
+struct timespec req = { 0, 500000000 };   // 0.5 s
+nanosleep(&req, NULL);
+```
+
+## La alarma
+
+El temporizador tiene una **alarma** en tiempo real: un instante absoluto en la escala de
+nanosegundos que dispara la interrupción **24** cuando llega.
+
+```c
+timer_alarm_at(timer_nanos64() + 1000000000ull);   // dentro de 1 s
+uint64_t cuando = timer_alarm();                    // 0 si está desarmada
+```
+
+<Callout type="info" title="Las esperas de la librería usan la alarma">
+`timer_wait_ms`, `game_pace_ms`, `audio_wait`, `key_wait` y `getchar` duermen con la
+alarma y la restauran a su valor previo, así que puedes tener tu propia alarma armada a la
+vez.
+</Callout>
+
+## Temporizadores software (por sondeo)
+
+Una tabla de tareas que se disparan por tiempo, movida desde tu bucle principal:
+
+```c
+static void parpadear(void* ctx) { led ^= 1; }
+
+int id = timer_every(50000, parpadear, NULL);   // cada 50000 ticks
+timer_after(100000, otro, NULL);                // una vez
+
+for (;;) {
+    update();
+    timer_poll();        // ejecuta lo que toque
+}
+timer_cancel(id);
+```
+
+## Calendario: `time.h`
+
+`time_t` es un **entero con signo de 64 bits** (segundos desde 1970), y el calendario
+admite cualquier fecha dentro de ~5 millones de años.
+
+```c
+#include "time.h"
+
+time_t ahora = time(NULL);        // reloj de pared (no determinista)
+struct tm* t = gmtime(&ahora);    // ¡No hay zonas horarias: localtime == gmtime!
+
+char texto[64];
+strftime(texto, sizeof texto, "%Y-%m-%d %H:%M:%S", t);
+printf("%s\n", texto);
+```
+
+`mktime` normaliza y completa; `timespec_get` con `TIME_UTC` o `TIME_MONOTONIC`.
+
+<Callout type="tip" title="clock() es tiempo real, no instrucciones">
+En C, `clock()` suele ser el tiempo de CPU. Aquí es **tiempo real en microsegundos** desde
+que arrancó la máquina. Para medir trabajo reproducible usa `timer_ticks64()`.
+</Callout>
+
+## Elegir el reloj correcto
+
+| Quieres… | Usa |
+|---|---|
+| Reproducir una partida / medir trabajo | `timer_ticks64()` |
+| Una animación a 60 FPS estables | `game_pace_ms` / `timer_wait_ms` |
+| Un cronómetro que el usuario ve | `timer_millis()` |
+| Una fecha legible | `time()` + `strftime` |
+| Programar algo a futuro | `timer_alarm_at` o `timer_after` |
+
+<Quiz question="¿Por qué el bucle de juego puede ser determinista?"
+  options="Porque usa el reloj de pared|Porque mide presupuesto en instrucciones (ticks)|Porque duerme|Porque no dibuja"
+  answer="1"
+  explain="El contador de ticks es el numero de instrucciones, identico en cada ejecucion; por eso un presupuesto de ticks da el mismo resultado."></Quiz>

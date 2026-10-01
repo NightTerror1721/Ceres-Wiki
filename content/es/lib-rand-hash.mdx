@@ -1,0 +1,110 @@
+# Aleatoriedad y hash
+
+## Números aleatorios
+
+`stdlib.h` trae el `rand()` clásico (un LCG pequeño). Para calidad y estado explícito,
+`ceres/rand.h` ofrece **xorshift128**, sembrado con splitmix32.
+
+```c
+#include "ceres/rand.h"
+
+struct rng r;
+rng_seed(&r, 2026);              // reproducible
+rng_seed_entropy(&r);            // desde el reloj (distinto cada vez)
+
+unsigned int u  = rng_u32(&r);
+int          n  = rng_range(&r, 1, 6);      // 1..6, sin sesgo
+float        f  = rng_float(&r);            // [0, 1)
+int          si = rng_chance(&r, 30);       // 1 con probabilidad 30%
+rng_shuffle(&r, cartas, 52, sizeof cartas[0]);   // Fisher-Yates
+```
+
+Y un generador global para cuando no te importa cuál:
+
+```c
+rand_seed(7);
+int x = rand_range(0, 99);
+```
+
+<Callout type="tip" title="Determinismo total">
+El `struct rng` guarda su propio estado, así que dos objetos con la misma semilla dan la
+misma secuencia. Perfecto para tests y para partidas reproducibles: guarda la semilla y
+puedes repetir la partida exacta.
+</Callout>
+
+## Funciones de hash y checksums
+
+`ceres/hash.h`, todo en 32 bits. Ninguna es criptográfica.
+
+```c
+#include "ceres/hash.h"
+
+unsigned int h1 = hash_fnv1a(data, len);     // FNV-1a
+unsigned int h2 = hash_djb2("cadena");       // cadenas
+unsigned int h3 = hash_murmur3(data, len, 0); // MurmurHash3 x86-32
+unsigned int h4 = hash_crc32(data, len);     // CRC-32 IEEE
+unsigned int h5 = hash_adler32(data, len);   // Adler-32
+```
+
+El CRC se puede calcular a trozos (útil para ficheros grandes):
+
+```c
+unsigned int crc = 0;
+while (fread(buf, 1, sizeof buf, f) > 0)
+    crc = hash_crc32_update(crc, buf, n);
+/* crc == hash_crc32 de todo junto */
+```
+
+Valores de referencia para comprobar tu implementación:
+
+| Entrada | Resultado |
+|---|---|
+| `hash_fnv1a("")` | `0x811C9DC5` |
+| `hash_crc32("123456789")` | `0xCBF43926` |
+| `hash_adler32("Wikipedia")` | `0x11E60398` |
+
+## Para qué sirve cada uno
+
+| Necesidad | Función |
+|---|---|
+| Tabla hash (claves enteras/cadenas) | `hash_fnv1a` / `hash_djb2` |
+| Distribución uniforme de calidad | `hash_murmur3` |
+| Verificar integridad de datos | `hash_crc32` |
+| Comparación rápida no criptográfica | `hash_adler32` |
+
+<Callout type="info" title="Los mapas de la librería ya hacen el hash">
+`ceres/ds/hashmap.h`, `gmap.h`, `hset.h` y `lru.h` usan estos hashes por dentro. Sólo
+necesitas escribir tu función de hash si la clave es un tipo propio.
+</Callout>
+
+## Ejemplo: generar un mundo
+ 
+```c
+#include "ceres/rand.h"
+
+static struct rng mundo;
+
+void generar_mundo(unsigned int semilla)
+{
+    rng_seed(&mundo, semilla);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++)
+            mapa[y][x] = rng_chance(&mundo, 15) ? ARBOL : HIERBA;
+}
+```
+
+## Ejemplo: barajar y repartir
+
+```c
+int mazo[52];
+for (int i = 0; i < 52; i++) mazo[i] = i;
+rng_shuffle(&r, mazo, 52, sizeof mazo[0]);
+
+int mano[5];
+for (int i = 0; i < 5; i++) mano[i] = mazo[i];
+```
+
+<Quiz question="¿Qué función devuelve un entero entre lo y hi, ambos incluidos, sin sesgo?"
+  options="rand()","rng_u32() % (hi-lo+1)","rng_range(&r, lo, hi)","rng_float(&r)"
+  answer="2"
+  explain="rng_range reparte el rango de 32 bits sin el sesgo del módulo y admite lo > hi intercambiándolos."></Quiz>

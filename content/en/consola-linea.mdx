@@ -1,0 +1,123 @@
+# Line input
+
+Reading with `getchar()` byte by byte is tedious. `ceres/line.h` offers the input operations
+almost every console program needs: a line, a number, a yes/no and a numbered choice.
+
+## Reading a line
+
+```c
+#include "ceres/line.h"
+
+char buf[128];
+int n = line_read(buf, sizeof buf);      // returns the length, or -1 at end of input
+printf("read %d characters: %s\n", n, buf);
+```
+
+`line_read` does **not** include the `\n` and always NUL-terminates. A line longer than the
+buffer is read to its end and the excess discarded; the remaining lines stay queued for the
+next call.
+
+With a prompt first:
+
+```c
+char name[64];
+line_prompt("Name: ", name, sizeof name);
+```
+
+## Numbers and choices
+
+```c
+int   n;
+float f;
+
+if (read_int("How many? ", &n) == 0)
+    printf("you chose %d\n", n);
+
+if (read_float("Speed? ", &f) == 0)
+    printf("speed %.2f\n", f);
+
+int wants = read_yes_no("Continue?", 1);   // 1 = yes (default), 0 = no
+
+const char* options[] = { "New game", "Load", "Quit" };
+int chosen = read_choice("Menu", options, 3);   // 1..3
+```
+
+`read_int` and `read_float` return `0` and store the value if the line is a complete number;
+otherwise `-1` and the variable is untouched. `read_yes_no` insists until it gets `y`,
+`yes`, `n` or `no` (an empty line uses the default). `read_choice` prints the numbered
+options and waits for a valid number.
+
+<Callout type="info" title="Input is line-based: it shows">
+The host terminal delivers lines: nothing arrives until you press Enter. That is why these
+functions **wait** for a whole line. If the program has other work to do, use
+`line_available()` to see whether anything is there, or `getchar_nb()` to avoid blocking.
+</Callout>
+
+## Draining the input
+
+```c
+line_discard();          // throw away whatever is waiting
+int ready = line_available();   // bytes queued (0 = a read would block)
+```
+
+## A complete console menu
+
+```c title="menu.c"
+#include "stdio.h"
+#include "ceres/line.h"
+
+static void play(void)  { puts("playing…"); }
+static void load(void)  { puts("loading…"); }
+
+int main(void)
+{
+    for (;;)
+    {
+        const char* options[] = { "Play", "Load", "Quit" };
+        int chosen = read_choice("=== MY GAME ===", options, 3);
+
+        if (chosen < 0)  break;      // end of input
+        if (chosen == 3) break;
+
+        switch (chosen)
+        {
+        case 1: play(); break;
+        case 2: load(); break;
+        }
+    }
+    puts("bye");
+    return 0;
+}
+```
+
+<Output title="session">
+=== MY GAME ===
+  1. Play
+  2. Load
+  3. Quit
+> 1
+playing…
+</Output>
+
+<Callout type="warn" title="Do not mix read_choice with scanf without draining">
+Both read from the same terminal. A `scanf` may leave the `\n` in the queue; call
+`line_discard()` before going back to `read_choice` or `line_read` to start clean.
+</Callout>
+
+## Reading without waiting (console games)
+
+For a game that must not block on input, `getchar_nb()` returns `-1` if there is nothing:
+
+```c
+int c = getchar_nb();
+if (c == 'q') running = 0;
+else if (c == 'a') x--;
+```
+
+And to read characters *as they are pressed* (arrows included), `ceres/key.h` is the right
+tool: see **Keyboard, mouse and gamepad**.
+
+<Quiz question="Does line_read include the trailing newline in the buffer?"
+  options="Yes, always|No, it leaves it out|Only on Windows|Depends on the buffer"
+  answer="1"
+  explain="line_read returns the line without the newline (a CRLF counts as one) and NUL-terminates."></Quiz>

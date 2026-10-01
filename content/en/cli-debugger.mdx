@@ -1,0 +1,118 @@
+# The debugger
+
+`ceres debug` opens a **debugger** with breakpoints, watchpoints, stepping, backtrace,
+coverage and **reverse execution**.
+
+```shell
+> ceres debug prog.cres                  # interactive REPL
+> ceres debug main.casm lib.casm         # several CASM sources
+> ceres debug prog.cres --no-stop-on-entry
+> ceres debug prog.cres --server         # NDJSON protocol (for editors)
+```
+
+| `debug` option | What it does |
+|---|---|
+| `--memory <bytes>` | RAM size (16 MiB by default) |
+| `--no-stop-on-entry` | Start without stopping before the first instruction |
+| `--server` | NDJSON server on stdin/stdout instead of the REPL |
+| `--no-history` | Turn off recording for reverse execution |
+
+A `.cres` without debug information **works**, but blind: `s` falls back to instruction
+stepping and line breakpoints report why they cannot be set. Compile with `--debug` to get
+lines.
+
+## REPL commands
+
+| Command (aliases) | Syntax | What it does |
+|---|---|---|
+| `q`, `quit` | `q` | Quit |
+| `h`, `help`, `?` | `h` | Command list |
+| `c`, `cont`, `continue` | `c` | Continue to a breakpoint, a fault or the end |
+| `s`, `step` | `s` | One **line** step, entering calls |
+| `n`, `next` | `n` | One line step, running calls to completion |
+| `si` | `si [n]` | `n` machine instructions |
+| `fin`, `finish` | `fin` | Until the current subroutine returns |
+| `until` | `until <loc>` | Until an address, symbol or `file:line` |
+| `run`, `r` | `run` | Restart from the beginning |
+| `b`, `break` | `b <loc>` or `b <loc> if <expr>` | Breakpoint with an optional condition |
+| `log` | `log <loc> <text>` | Logpoint: interpolate `{expressions}` then continue |
+| `watch` | `watch [read\|r\|rw] <var\|addr> [size]` | Data watchpoint |
+| `d`, `delete` | `d [id]` | Delete a breakpoint/watch (or all) |
+| `bl`, `breaks` | `bl` | List breakpoints and watches with hit counts |
+| `regs`, `reg`, `i` | `regs` | Registers and flags |
+| `bt`, `where` | `bt` | Call stack (exact or reconstructed) |
+| `l`, `list` | `l [loc]` | Source around the current line |
+| `dis`, `disas` | `dis [n]` | Disassembly around the PC |
+| `x` | `x <loc> [n]` | Hex dump |
+| `vars` | `vars` | Globals and constants with their types |
+| `cov`, `coverage` | `cov` | Per-line coverage (`never` = unreached) |
+| `p`, `print` | `p <expr>` | Evaluate an expression |
+| `set` | `set <reg> <value>` | Write a register |
+| `input` | `input <text>` | Queue a line into the program's input |
+| `attach` | `attach <n> <file> [cart]` | Plug a medium into port n |
+| `detach` | `detach <n>` | Remove the medium from port n |
+| `ports` | `ports` | Describe the peripheral ports |
+| `rs` | `rs` | Step **back** one line (reverse execution) |
+| `rsi` | `rsi` | Step back one instruction |
+| `rc` | `rc` | Run backwards to the previous breakpoint |
+| `goto` | `goto <tick>` | Go to an instruction count |
+| `hist` | `hist` | Snapshots, interval, oldest tick, cost |
+
+<Callout type="info" title="Stepping is by source line">
+In stepping mode it stops only at addresses marked "first of line", so a 2–3 word
+pseudo-instruction or a macro expansion counts as one step. `s`/`n`/`c` are bounded
+(10M / 200M instructions) so an infinite loop does not hang the debugger.
+</Callout>
+
+## Examples
+
+```text title="A session"
+(ceres) b main.c:12
+breakpoint 1 at main.c:12
+(ceres) b update if score > 100
+breakpoint 2 at update (conditional)
+(ceres) c
+breakpoint 1, main.c:12
+(ceres) p lives
+3
+(ceres) n
+(ceres) watch lives
+watch 3 (write, 4 bytes)
+(ceres) c
+watchpoint 3: lives = 2
+(ceres) rs
+stepped back to main.c:12
+(ceres) bt
+  #0 update+0x2a
+  #1 main+0x18
+(ceres) cov
+```
+
+## Reverse execution
+
+`rs`, `rsi`, `rc` and `goto` **run backwards**. It is built on periodic snapshots: by default
+47 snapshots × 20 000 instructions = 1.28 million instructions of reach, and each snapshot is
+a few KiB. `hist` reports it; `--no-history` turns it off (useful if the program is huge and
+you do not need to rewind).
+
+<Callout type="tip" title="Why it can rewind">
+The machine is **deterministic**: the tick counter is the number of instructions. By saving
+memory periodically, re-running from the previous snapshot reproduces the exact state. The
+wall clock is recorded and replayed separately.
+</Callout>
+
+## Server mode (`--server`)
+
+It speaks **NDJSON** on stdin/stdout (it is not DAP). Requests
+`{"seq","type":"request","command","arguments"}`, responses
+`{"type":"response","request_seq","command","success","body"}` and events `{"type":"event",…}`.
+Commands: `configurationDone`, `terminate`/`disconnect`, `restart`, `continue`, `next`,
+`stepIn`, `stepOut`, `stepInstruction`, `runTo`, `stepBack`, `stepBackInstruction`,
+`reverseContinue`, `runToTick`, `coverage`, `history`, `pause`, `setBreakpoints`,
+`setInstructionBreakpoints`, `setDataBreakpoints`, `evaluate`, `stackTrace`, `registers`,
+`globals`, `readMemory`, `writeMemory`, `disassemble`, `setRegister`, `goto`, `input`…
+
+<Quiz question="Which command steps back one line of code?"
+  options="b|rs|rc|goto"
+  answer="1"
+  explain="rs is the line step back; rsi is the instruction one and rc runs backwards to the previous breakpoint."></Quiz>

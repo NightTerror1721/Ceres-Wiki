@@ -1,0 +1,130 @@
+# Four-channel music
+
+The audio device brings **four channels** with ADSR envelopes, mixed by the host.
+`ceres/music.h` turns them into a small *tracker*: songs as text and effects that do not
+block.
+
+## The channels
+
+```c
+#include "ceres/music.h"
+
+struct voice_settings v = MUSIC_LEAD;    // a preset instrument
+channel_set(0, &v);
+channel_note_on(0, 440);
+/* ... */
+channel_note_off(0);        // starts the release
+channel_stop(0);            // immediate silence
+int sounding = channel_sounding(0);
+```
+
+An instrument (`MUSIC_LEAD`, `MUSIC_BASS`, `MUSIC_PAD`, `MUSIC_DRUM`) is:
+
+```c
+struct voice_settings {
+    enum audio_wave wave;
+    unsigned int duty;          // square's high part (128 = 50%)
+    unsigned int volume;        // 0..255
+    unsigned int attack_ms, decay_ms, sustain, release_ms;
+};
+```
+
+## A song
+
+A song is text: each voice is a row of space-separated notes.
+
+- `C4`, `F#3`, `Bb5` — a note (letter, optional `#`/`b`, octave; C4 = middle C)
+- `-` — let the note go (release)
+- `.` — sustain what is sounding
+- `x` — silence at once
+
+```c title="song.c"
+#include "stdio.h"
+#include "ceres/music.h"
+#include "ceres/timer.h"
+
+static const struct music_song melody = {
+    .rows_per_minute = 480,
+    .length = 8,
+    .voice = {
+        "C4 . E4 . G4 . C5 -",
+        "C3 - - - G2 - - -",
+        0, 0
+    },
+    .instrument = { MUSIC_LEAD, MUSIC_BASS }
+};
+
+int main(void)
+{
+    music_play(&melody, 1);           // 1 = loop
+    for (int i = 0; i < 200; i++)
+    {
+        music_update();               // advance by the real time elapsed
+        timer_wait_ms(10);
+    }
+    music_stop();
+    return 0;
+}
+```
+
+`music_update()` moves the song by the real time that has passed: call it **once per frame**,
+or from a task. `music_row()` says which row it is on; `music_step()` advances one row now if
+you keep your own time.
+
+## Sound effects
+
+An effect takes a channel for as long as it lasts (a free one, or the song's, or one playing
+a lower-priority effect) and sweeps its frequency from one pitch to another:
+
+```c
+static const struct sfx jump = {
+    .wave = AUDIO_SQUARE,
+    .hz_from = 300, .hz_to = 900,
+    .ms = 120, .volume = 180
+};
+
+int channel = sfx_play(&jump, 5);   // the channel it took, or -1 if all are busier
+```
+
+`sfx_update()` (which `music_update` already calls) sweeps and ends the effects.
+
+## A shooter with a sound effect
+
+```c title="shoot.c"
+// USE: irq
+#include "ceres/music.h"
+#include "ceres/game.h"
+#include "ceres/input.h"
+#include "ceres/gfx.h"
+
+static const struct sfx shot = { AUDIO_NOISE, 1200, 200, 90, 200 };
+
+int main(void)
+{
+    gfx_init(320, 200);
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 33);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_SPACE)) sfx_play(&shot, 3);
+        gfx_clear(0);
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="With no host, everything is silent but correct">
+On a machine without a mixer, `channel_sounding` is false and nothing sounds, but the song
+still "advances": you can test the audio logic without hearing anything.
+</Callout>
+
+<Quiz question="What does '.' mean in a song voice?"
+  options="Silence|Keep the note that is sounding|A long rest|Up one octave"
+  answer="1"
+  explain="'.' sustains what is sounding; '-' releases the note and 'x' silences it at once."></Quiz>

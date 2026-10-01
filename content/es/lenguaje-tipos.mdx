@@ -1,0 +1,122 @@
+# Tipos y variables
+
+Ceres-C implementa un subconjunto de C muy práctico: C89 más `long long`, `bool`, `//`, y
+buena parte de C99/C11/C23. Esta página es la referencia rápida de tipos.
+
+## Tamaños en Ceres
+
+Ceres es una máquina de **32 bits**. Esto es lo que ocupa cada tipo:
+
+| Tipo | Bytes | Alineación | Notas |
+|---|---|---|---|
+| `char` | 1 | 1 | **con signo** por defecto |
+| `short` | 2 | 2 | |
+| `int` | 4 | 4 | |
+| `long` | 4 | 4 | ¡igual que `int`! |
+| `long long` | 8 | 8 | tipo real de 64 bits |
+| `float` | 4 | 4 | IEEE binary32 |
+| `double` | 4 | 4 | alias de `float` (aviso `W2001`) |
+| `double` con `--soft-double` | 8 | 8 | binary64 real en software |
+| puntero | 4 | 4 | la máquina direcciona 4 GiB |
+| `struct` | suma alineada | el mayor campo | |
+| `enum` | 4 | 4 | es un `int` |
+
+<Callout type="warn" title="long NO es de 64 bits">
+En un PC moderno `long` es de 64 bits; aquí **no**. Si necesitas 64 bits usa `long long`
+(o los tipos de `stdint.h`: `int64_t`). Es la fuente número uno de portabilidad.
+</Callout>
+
+## Declarar variables
+
+```c
+int         count = 0;
+unsigned    mask  = 0xFFu;
+long long   total = 0;
+float       x = 1.5f, y = -2.0f;
+char        c = 'A';
+const char* name = "Ceres";
+int         grid[16][16];        // arrays 2D de tamaño constante
+```
+
+La máquina **no** admite arrays de tamaño variable (VLA) ni `alloca`: el tamaño de un
+array debe ser una constante de compilación.
+
+## Literales
+
+```c
+42          // int
+42u         // unsigned int
+42L         // long (32 bits)
+42LL        // long long (64 bits)
+0x2A        // hexadecimal
+0b101010    // binario (extension de Ceres-C)
+0755        // octal (C)
+1.5f        // float
+1.5         // float (double es float)
+0x1.8p3     // 12.0 en hexadecimal flotante
+'x'  '\n'  '\x41'  '\u00F1'
+"texto con \t escape"
+L"ancho"    // wchar_t (UTF-32)
+u8"utf-8"   // elementos char (C17)
+```
+
+## Tipos con signo y sin signo
+
+```c
+unsigned int a = 0xFFFFFFFFu;   // 4294967295
+int          b = (int)a;        // -1 al reinterpretar
+```
+
+Los enteros son de complemento a dos; el desbordamiento con signo **se envuelve** (no es
+comportamiento indefinido, como en C). Para detectarlo con exactitud usa `stdckdint.h`:
+
+```c
+#include "stdckdint.h"
+
+int r;
+if (ckd_add(&r, a, b))
+    puts("desbordamiento");
+```
+
+## `const` y `volatile`
+
+`const` sitúa el objeto en `.rodata` (la máquina lo protege: un `store` ahí es un
+`MemoryFault`). `volatile` obliga a leer/escribir memoria de verdad, instrucción a
+instrucción: es **imprescindible** para los registros de los dispositivos MMIO.
+
+```c
+const int LIMITE = 100;                 // a .rodata
+volatile unsigned int* const reg = (unsigned int*)0xFF010000;   // timer
+unsigned int t = *reg;                  // lectura real, no optimizable
+```
+
+## `typedef`, `enum`, `union`
+
+```c
+typedef struct { int x, y; } punto;     // struct anonimo con typedef
+enum color { ROJO, VERDE, AZUL = 10 };
+
+union valor { int i; float f; unsigned u; };   // comparten memoria
+```
+
+## Punteros
+
+```c
+int  n = 5;
+int* p = &n;         // direccion de n
+*p = 6;              // escribe a traves del puntero
+int* q = p + 1;      // aritmetica de punteros (4 bytes por int)
+```
+
+`NULL` está en `stddef.h`. Un acceso a través de `NULL` provoca `MemoryFault` (la página
+cero está protegida).
+
+<Callout type="tip" title="Mira el tamaño en el código">
+`sizeof(int)`, `sizeof(long long)`, `sizeof(punto)`… todos funcionan. Escribe
+`_Static_assert(sizeof(long long) == 8, "");` y el compilador lo comprueba al compilar.
+</Callout>
+
+<Quiz question="¿Cuántos bytes ocupa un long en Ceres?"
+  options="2|4|8|Depende del optimizador"
+  answer="1"
+  explain="En Ceres long es de 32 bits, igual que int. Para 64 bits se usa long long."></Quiz>

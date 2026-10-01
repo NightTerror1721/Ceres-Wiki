@@ -1,0 +1,130 @@
+# Música de 4 canales
+
+El dispositivo de audio trae **cuatro canales** con envolvente ADSR, mezclados por el
+anfitrión. `ceres/music.h` los convierte en un pequeño *tracker*: canciones como texto y
+efectos que no bloquean.
+
+## Los canales
+
+```c
+#include "ceres/music.h"
+
+struct voice_settings v = MUSIC_LEAD;    // instrumento predefinido
+channel_set(0, &v);
+channel_note_on(0, 440);
+/* ... */
+channel_note_off(0);        // arranca la release
+channel_stop(0);            // silencio inmediato
+int suena = channel_sounding(0);
+```
+
+Un instrumento (`MUSIC_LEAD`, `MUSIC_BASS`, `MUSIC_PAD`, `MUSIC_DRUM`) es:
+
+```c
+struct voice_settings {
+    enum audio_wave wave;
+    unsigned int duty;          // parte alta de una cuadrada (128 = 50%)
+    unsigned int volume;        // 0..255
+    unsigned int attack_ms, decay_ms, sustain, release_ms;
+};
+```
+
+## Una canción
+
+Una canción es texto: cada voz es una fila de notas separadas por espacios.
+
+- `C4`, `F#3`, `Bb5` — una nota (letra, `#`/`b` opcional, octava; C4 = Do central)
+- `-` — suelta la nota (release)
+- `.` — mantiene lo que suena
+- `x` — silencio inmediato
+
+```c title="cancion.c"
+#include "stdio.h"
+#include "ceres/music.h"
+#include "ceres/timer.h"
+
+static const struct music_song melodia = {
+    .rows_per_minute = 480,
+    .length = 8,
+    .voice = {
+        "C4 . E4 . G4 . C5 -",
+        "C3 - - - G2 - - -",
+        0, 0
+    },
+    .instrument = { MUSIC_LEAD, MUSIC_BASS }
+};
+
+int main(void)
+{
+    music_play(&melodia, 1);          // 1 = en bucle
+    for (int i = 0; i < 200; i++)
+    {
+        music_update();               // avanza segun el tiempo real transcurrido
+        timer_wait_ms(10);
+    }
+    music_stop();
+    return 0;
+}
+```
+
+`music_update()` mueve la canción por el tiempo real que ha pasado: llámalo **una vez por
+fotograma**, o desde una tarea. `music_row()` dice por qué fila va; `music_step()` avanza
+una fila ya si tú llevas tu propio tiempo.
+
+## Efectos de sonido
+
+Un efecto toma un canal mientras dura (uno libre, o el de la canción, o el de un efecto de
+menor prioridad) y barre su frecuencia de un tono a otro:
+
+```c
+static const struct sfx salto = {
+    .wave = AUDIO_SQUARE,
+    .hz_from = 300, .hz_to = 900,
+    .ms = 120, .volume = 180
+};
+
+int canal = sfx_play(&salto, 5);   // el canal tomado, o -1 si todos estan mas ocupados
+```
+
+`sfx_update()` (que `music_update` ya llama) barre y termina los efectos.
+
+## Un tirador con efecto
+
+```c title="disparo.c"
+// USE: irq
+#include "ceres/music.h"
+#include "ceres/game.h"
+#include "ceres/input.h"
+#include "ceres/gfx.h"
+
+static const struct sfx disparo = { AUDIO_NOISE, 1200, 200, 90, 200 };
+
+int main(void)
+{
+    gfx_init(320, 200);
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 33);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_SPACE)) sfx_play(&disparo, 3);
+        gfx_clear(0);
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="Sin host, todo es silencioso pero correcto">
+En una máquina sin mezclador, `channel_sounding` es falso y nada suena, pero la canción
+sigue "avanzando": puedes testear la lógica de audio sin oír nada.
+</Callout>
+
+<Quiz question="¿Qué significa '.' en una voz de canción?"
+  options="Silencio|Mantener la nota que suena|Una pausa larga|Subir una octava"
+  answer="1"
+  explain="'.' mantiene lo que suena; '-' suelta la nota (release) y 'x' calla de golpe."></Quiz>

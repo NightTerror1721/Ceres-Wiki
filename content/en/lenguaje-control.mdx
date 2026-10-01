@@ -1,0 +1,126 @@
+# Control flow
+
+Ceres-C supports all the control flow you would expect from C: conditionals, loops,
+`switch`, `goto`, `break` and `continue`.
+
+## Conditionals
+
+```c
+if (health <= 0)
+    game_over();
+else if (health < 20)
+    puts("careful!");
+else
+    puts("all good");
+```
+
+The ternary operator is there too:
+
+```c
+int max = a > b ? a : b;
+```
+
+## Loops
+
+```c
+for (int i = 0; i < 10; i++)          // declaration in the for is allowed
+    printf("%d ", i);
+
+while (running) { update(); draw(); }
+
+do { step(); } while (remaining());
+```
+
+## `switch`
+
+```c
+switch (key)
+{
+case 'w': y--; break;
+case 's': y++; break;
+case 'a': x--; break;
+case 'd': x++; break;
+default:  break;
+}
+```
+
+<Callout type="tip" title="The compiler generates jump tables">
+With `-O1`/`-O2`, a `switch` with **5 or more** cases and enough density becomes a **jump
+table** in `.rodata` plus an indirect jump. You can see it in the CASM or with `--stats`.
+</Callout>
+
+GNU range cases are accepted too:
+
+```c
+switch (level)
+{
+case 1 ... 5:   puts("easy");   break;
+case 6 ... 10:  puts("normal"); break;
+default:        puts("hard");   break;
+}
+```
+
+## `break`, `continue` and `goto`
+
+```c
+for (int y = 0; y < H; y++)
+{
+    for (int x = 0; x < W; x++)
+        if (map[y][x] == EXIT)
+            goto found;          // leaves both loops
+}
+
+found:
+puts("exit found");
+
+for (int i = 0; i < n; i++)
+{
+    if (i % 2) continue;         // skip this iteration
+    if (i == limit) break;       // end the loop
+}
+```
+
+## Conditions and truth
+
+In Ceres, as in C: **0 is false**, anything else is true. A non-null pointer is true.
+
+```c
+if (p) { /* p != NULL */ }
+if (count) { /* count != 0 */ }
+```
+
+<Callout type="info" title="Everything is measured in instructions">
+Small, hot loops matter: the compiler **lowers loop idioms** to the machine's block
+instructions (`mcpy`, `mset`, `mscan`). A `for` that copies an array becomes a single
+`mcpy`. Write the clear loop; the compiler speeds it up.
+</Callout>
+
+## Example: a prime sieve
+
+```c
+#include "stdio.h"
+#include "string.h"
+
+int main(void)
+{
+    char is_prime[100];
+    memset(is_prime, 1, sizeof is_prime);
+    is_prime[0] = is_prime[1] = 0;
+
+    for (int i = 2; i * i < 100; i++)
+        if (is_prime[i])
+            for (int j = i * i; j < 100; j += i)
+                is_prime[j] = 0;
+
+    for (int i = 0; i < 100; i++)
+        if (is_prime[i])
+            printf("%d ", i);
+    putchar('\n');
+    return 0;
+}
+```
+
+<Quiz question="From how many cases does a switch compile to a jump table at -O2?"
+  options="3|5|8|20"
+  answer="1"
+  explain="From 5 cases with enough density; otherwise it generates a tree or a chain of comparisons."></Quiz>

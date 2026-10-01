@@ -1,0 +1,128 @@
+# The preprocessor
+
+Ceres-C ships a real preprocessor, not a toy: includes, macros with `#` and `##`,
+conditionals, `__has_include` and `#pragma once`.
+
+## Including files
+
+```c
+#include "my_header.h"       // first next to the including file
+#include <stdio.h>           // only in the -I directories
+#include_next "other.h"      // continue the search after the current directory
+```
+
+You can ask whether something exists:
+
+```c
+#if __has_include("ceres/music.h")
+#include "ceres/music.h"
+#define HAS_MUSIC 1
+#endif
+```
+
+## Macros
+
+```c
+#define MAX_ENEMIES 64
+#define SQUARE(x) ((x) * (x))
+#define LOG(fmt, ...) printf("[log] " fmt "\n", __VA_ARGS__)
+```
+
+And the text operators:
+
+```c
+#define STR(x)      #x                  // to a string: STR(hi) -> "hi"
+#define CAT(a,b)    a##b                // paste tokens: CAT(PLAY,ER) -> PLAYER
+```
+
+<Callout type="tip" title="Multi-line calls">
+A macro invocation with arguments may span **several lines**: the preprocessor absorbs the
+following lines until the parenthesis closes, respecting comments and never swallowing a
+directive.
+</Callout>
+
+## Conditionals
+
+```c
+#define DEBUG 1
+
+#if DEBUG
+    #define LOGD(fmt, ...) printf("[dbg] " fmt "\n", __VA_ARGS__)
+#elif defined(RELEASE)
+    #define LOGD(fmt, ...) ((void)0)
+#else
+    #error "define DEBUG or RELEASE"
+#endif
+```
+
+| Directive | Use |
+|---|---|
+| `#if` / `#elif` / `#else` / `#endif` | Constant integer expressions |
+| `#ifdef` / `#ifndef` | Is the macro defined? |
+| `defined(X)` / `defined X` | Inside `#if` |
+| `__has_include(...)` | Does the header exist? |
+| `#undef` | Remove a macro |
+| `#error` / `#warning` | Fail / warn at compile time |
+| `#pragma once` | Include guard |
+| `#pragma warning(...)` | Enable/disable warnings |
+
+## Predefined macros
+
+| Macro | Value |
+|---|---|
+| `__FILE__` | Current file name |
+| `__LINE__` | Current line |
+| `__func__` | Current function (an identifier, not a macro) |
+| `__DATE__`, `__TIME__` | Build date and time |
+| `__STDC__` | `1` |
+| `__STDC_HOSTED__` | `0` (freestanding: no system libc) |
+| `__CERESC__` | `1` |
+| `__COUNTER__` | An integer that increments on every use |
+| `__INCLUDE_LEVEL__` | Include depth |
+
+<Callout type="info" title="There is no __STDC_VERSION__">
+On purpose: Ceres-C does not claim conformance to a particular C revision. Use `__CERESC__`
+to detect it.
+</Callout>
+
+## Warning control
+
+```c
+#pragma warning(disable: 2001)      // silence "double is float"
+double d = 1.0;                     // no noise
+#pragma warning(default: 2001)
+```
+
+You can use `disable`, `enable`, `error`, `default`, `push` and `pop`. With `-Werror`
+warnings are errors unless a `#pragma` says otherwise.
+
+## Search paths
+
+| Option | What it does |
+|---|---|
+| `-I dir` | Add an include directory (repeatable, in order) |
+| `--sysroot dir` | Adds `dir/include` and `dir/lib` |
+| `-D NAME[=val]` | Define a macro from the command line |
+
+```shell
+> ceresc prog.c ... -I include -I vendor -DDEBUG=1 -Werror
+```
+
+## Trick: build a table of names
+
+```c
+#define COLOURS(X) \
+    X(RED,   0xFF0000) \
+    X(GREEN, 0x00FF00) \
+    X(BLUE,  0x0000FF)
+
+#define DEF_NAME(name, value) const char* name##_txt = #name;
+COLOURS(DEF_NAME)
+
+int main(void) { puts(RED_txt); return 0; }   // RED
+```
+
+<Quiz question="What does SQUARE(2+3) print with #define SQUARE(x) ((x)*(x))?"
+  options="25|11|13|2+3*2+3"
+  answer="0"
+  explain="The parentheses around the parameter and the whole expression avoid the precedence bug: (2+3)*(2+3)=25."></Quiz>

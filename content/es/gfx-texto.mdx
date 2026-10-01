@@ -1,0 +1,132 @@
+# Framebuffer de texto
+
+El **framebuffer de texto** es una rejilla de caracteres que tu programa dibuja y luego
+muestra. No es una consola que hace scroll: es un tablero que se redibuja entero, ideal
+para juegos de texto, roguelikes y menús.
+
+## Iniciarlo
+
+```c
+#include "ceres/textfb.h"
+
+if (fb_init(40, 20) != 0)     // columnas, filas (hasta 200x100)
+{
+    puts("no hay pantalla");
+    return 1;
+}
+fb_shutdown();
+```
+
+## Dibujar
+
+```c
+fb_clear(' ');                 // llena la rejilla
+fb_put(x, y, '@');             // una celda
+fb_text(x, y, "Hola ñandú");   // UTF-8; '\n' baja una fila
+fb_printf(x, y, "HP %d", hp);  // con formato
+fb_hline(x, y, len, '-');
+fb_vline(x, y, len, '|');
+fb_rect(x, y, w, h, '#');      // contorno
+fb_fill(x, y, w, h, '.');
+fb_box(x, y, w, h);            // marco con + - |
+fb_copy(dx, dy, sx, sy, w, h); // copia de region
+fb_scroll(1);                  // sube una fila
+fb_present();                  // muestra el fotograma
+```
+
+## Color por celda
+
+Cada celda tiene un atributo de color (un byte). `0` significa los colores del terminal.
+
+```c
+fb_set_attr(FB_ATTR(FB_BRIGHT + FB_YELLOW, FB_BLACK));
+fb_text(1, 1, "Título");
+
+fb_put_attr(10, 10, '@', FB_ATTR(FB_WHITE, FB_BLUE));   // una celda propia
+unsigned char a = fb_get_attr(10, 10);
+```
+
+Colores: `FB_BLACK FB_RED FB_GREEN FB_YELLOW FB_BLUE FB_MAGENTA FB_CYAN FB_WHITE`, más
+`FB_BRIGHT` para sumar brillo. `FB_ATTR(fg, bg)` los empaqueta.
+
+## ¿Dónde se ve el fotograma?
+
+- Con ventana (SDL): se dibuja en una **ventana** con la fuente de mapa de bits, en color.
+- Sin ventana (`--terminal`, o `CERES_HEADLESS=1`): se imprime como **texto** en la salida.
+
+Puedes forzarlo en caliente:
+
+```c
+fb_set_output(FB_OUT_TERMINAL);   // o FB_OUT_WINDOW, FB_OUT_AUTO
+int donde = fb_output();
+```
+
+## Un ejemplo: un roguelike mínimo
+
+```c title="rogue.c"
+// USE: irq
+#include "stdio.h"
+#include "ceres/textfb.h"
+#include "ceres/key.h"
+#include "ceres/rand.h"
+
+#define W 40
+#define H 20
+
+static char mapa[H][W];
+static int px = W / 2, py = H / 2;
+
+static void generar(void)
+{
+    struct rng r;
+    rng_seed(&r, 1234);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            mapa[y][x] = (x == 0 || y == 0 || x == W - 1 || y == H - 1)
+                       ? '#' : (rng_chance(&r, 12) ? '#' : '.');
+    mapa[py][px] = '.';
+}
+
+static void dibujar(void)
+{
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            fb_put(x, y, mapa[y][x]);
+    fb_put(px, py, '@');
+    fb_printf(0, 0, "pos %d,%d", px, py);
+    fb_present();
+}
+
+int main(void)
+{
+    if (fb_init(W, H) != 0) return 1;
+    generar();
+    key_start();
+    for (;;)
+    {
+        dibujar();
+        int k = key_wait();
+        if (k == KEYC_ESC || k == 'q') break;
+        int nx = px, ny = py;
+        if (k == KEYC_UP || k == 'w')    ny--;
+        if (k == KEYC_DOWN || k == 's')  ny++;
+        if (k == KEYC_LEFT || k == 'a')  nx--;
+        if (k == KEYC_RIGHT || k == 'd') nx++;
+        if (mapa[ny][nx] != '#') { px = nx; py = ny; }
+    }
+    key_stop();
+    fb_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="El framebuffer y las teclas">
+En una ventana las teclas llegan por el dispositivo de teclado; en un terminal, la primera
+llamada a `key_start()` pide al anfitrión que las entregue al pulsarlas. El módulo **`irq`**
+no es necesario para `key_wait()`: bloquea en el dispositivo.
+</Callout>
+
+<Quiz question="¿Qué significa un atributo de color 0 en una celda?"
+  options="Negro sobre negro|Los colores propios del terminal|Invisible|Error"
+  answer="1"
+  explain="El atributo 0 deja la celda con los colores por defecto del terminal en vez de forzar un par."></Quiz>

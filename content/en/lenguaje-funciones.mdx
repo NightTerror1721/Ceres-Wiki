@@ -1,0 +1,144 @@
+# Functions, pointers and structs
+
+## Functions
+
+```c
+int sum(int a, int b) { return a + b; }
+
+void greet(const char* who)
+{
+    printf("Hello, %s\n", who);
+}
+```
+
+Arguments arrive by convention in **`r0`–`r3`** (integers/pointers) and **`f0`–`f3`**
+(floats), counted separately; the rest go on the stack. The return value comes back in `r0`
+(or `f0`). You never write this yourself: the compiler does, but it helps to know it when
+you write assembly.
+
+| Up to 4 integers | `r0 r1 r2 r3` |
+| The rest | caller's stack, `[sp]` upward |
+| Up to 4 floats | `f0 f1 f2 f3` |
+| Integer return | `r0` |
+| Float return | `f0` |
+| `long long` return | `r0`/`r1` (a pair of words) |
+
+## Recursion
+
+Recursion works, and the compiler imposes **no limit**: if you go too deep you get a machine
+`StackOverflow` (far better than corrupting memory).
+
+```c
+int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+```
+
+<Callout type="warn" title="The stack is finite">
+The heap cannot grow into the stack: `malloc` raises the stack limit as it grows. If a
+recursion goes too deep, the machine faults with `StackOverflow` (interrupt 5) instead of
+clobbering your data. For deep recursion, measure with `dbg_stack_used()`.
+</Callout>
+
+## Function pointers
+
+They are the basis of callbacks, game states and behaviour tables.
+
+```c
+int add(int a, int b) { return a + b; }
+int sub(int a, int b) { return a - b; }
+
+int (*op)(int, int) = add;
+printf("%d\n", op(3, 4));    // 7
+op = sub;
+printf("%d\n", op(3, 4));    // -1
+```
+
+<Callout type="info" title="They are used everywhere">
+`qsort` takes a comparator, the game loop takes `update` and `draw`, and a game engine's
+state tables are arrays of function pointers. Ceres-C supports them fully, even as **static
+initializers**.
+</Callout>
+
+## Structs by value
+
+```c
+struct point { int x, y; };
+
+struct point move(struct point p, int dx, int dy)
+{
+    p.x += dx;
+    p.y += dy;
+    return p;                 // returns a copy
+}
+
+struct point a = { 2, 3 };
+a = move(a, 1, 1);            // a = {3, 4}
+```
+
+## Compound types
+
+```c
+struct entity
+{
+    int x, y;
+    int lives;
+    const char* name;
+    void (*update)(struct entity*);
+};
+
+struct entity hero = { .x = 4, .y = 2, .lives = 3, .name = "Ana" };
+```
+
+**Designated initializers** are C99 and the compiler accepts them; so are **compound
+literals** `(struct point){1, 2}`.
+
+## Passing arrays
+
+Arrays decay to pointers:
+
+```c
+void fill(int* v, int n, int value)
+{
+    for (int i = 0; i < n; i++) v[i] = value;
+}
+
+int data[10];
+fill(data, 10, 7);
+```
+
+## Static variables and scope
+
+```c
+static int counter;          // one copy, invisible outside this file
+static int next(void) { return ++counter; }
+```
+
+`static` inside a function gives persistence; at file scope, internal linkage.
+
+## Returning several things
+
+There are no tuples: use a struct.
+
+```c
+struct range { int min, max; };
+
+struct range bounds(const int* v, int n)
+{
+    struct range r = { v[0], v[0] };
+    for (int i = 1; i < n; i++)
+    {
+        if (v[i] < r.min) r.min = v[i];
+        if (v[i] > r.max) r.max = v[i];
+    }
+    return r;
+}
+```
+
+<Callout type="tip" title="Structs with \"live pointers\"">
+One library feature that will save you a lot of `struct` pointers: `ceres/ds/vecmath.h`
+passes `vec2`/`vec3` **by value** and returns structs. Perfect for positions and velocities.
+</Callout>
+
+<Quiz question="Which registers carry the first two integers of a function call?"
+  options="On the stack|In r0 and r1|In f0 and f1|In the global area"
+  answer="1"
+  explain="The first four integers go in r0-r3 and the first four floats in f0-f3."></Quiz>

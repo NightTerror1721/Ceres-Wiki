@@ -1,0 +1,137 @@
+# Apéndice: dispositivos
+
+Mapa de memoria de los dispositivos MMIO. Todo se lee y escribe con acceso **volátil** del
+ancho correcto (`ceres.h` da `mmio_r8/16/32` y `mmio_w8/16/32`). Un slot sin dispositivo
+lee todo unos y descarta las escrituras.
+
+| Base | Nº | Dispositivo | Cabecera |
+|---|---|---|---|
+| `0xFF000000` | 0 | Terminal | `ceres/terminal.h` |
+| `0xFF010000` | 1 | Temporizador | `ceres/timer.h` |
+| `0xFF020000` | 2 | Disco | `ceres/disk.h` |
+| `0xFF030000` | 3 | Framebuffer de texto | `ceres/textfb.h` |
+| `0xFF040000` | 4 | DMA | `ceres/dma.h` |
+| `0xFF050000` | 5 | Teclado | `ceres/keyboard.h` |
+| `0xFF060000` | 6 | Ratón | `ceres/mouse.h` |
+| `0xFF070000` | 7 | Display de píxeles | `ceres/display.h` |
+| `0xFF080000` | 8 | Gamepad | `ceres/gamepad.h` |
+| `0xFF090000` | 9 | Audio | `ceres/audio.h` |
+| `0xFF0A0000` | 10 | Puertos periféricos | `ceres/periph.h` |
+| `0xFF0B0000` | 11 | Ficheros del anfitrión | `ceres/hostfs.h` |
+| `0xFF0C0000` | 12 | Blitter | `ceres/blitter.h` |
+| `0xFFFF0000` | 255 | Control del sistema | `ceres/sys.h` |
+
+## Mapa de RAM
+
+| Dirección | Qué hay |
+|---|---|
+| `0x00000000` | Tabla de vectores (64 × 4 B) |
+| `0x00000100` | BIOS (768 B) |
+| `0x00000400` | Inicio de tu programa |
+| … | Heap ↑ y pila ↓ |
+| fin de RAM − 4096 | Pila del sistema |
+| `0xFF000000` + | Dispositivos |
+
+## Terminal (`0xFF000000`)
+
+| Offset | Registro |
+|---|---|
+| `0x00` | Estado (bit0 entrada, bit1 salida, bit2 EOF) |
+| `0x04` | Salida (byte) |
+| `0x08` | Entrada (byte) |
+| `0x0C` | Bytes disponibles |
+| `0x16`/`0x18` | Modo (raw/keys) |
+| `0x1C` | Salida de error |
+| `0xF0/F4/F8` | Bloque (dir/largo/comando) |
+
+## Temporizador (`0xFF010000`)
+
+| Offset | Registro |
+|---|---|
+| `0x00` | Ticks (bajo); latchea el alto |
+| `0x04` | Reloj de pared (segundos desde 1970) |
+| `0x08` | Comando del temporizador (armar/periódico) |
+| `0x0C` | Milisegundos |
+| `0x10/0x14` | Nanosegundos bajo/alto |
+| `0x18` | Resolución del reloj |
+| `0x1C` | Reloj en *halt* (ticks/s) |
+| `0x20/0x24` | Alarma (bajo/alto); escribir el alto arma |
+| `0x28` | Ticks alto |
+
+## Display (`0xFF070000`)
+
+| Offset | Registro |
+|---|---|
+| `0x00` | Comando (1 limpiar, 2 presentar) |
+| `0x04/0x08` | Ancho / alto |
+| `0x0C` | Dato (un píxel) |
+| `0x10` | Modo (0 RGB32, 1 indexado) |
+| `0x14/0x18` | Índice/dato de paleta |
+| `0x1C/0x20` | Scroll X / Y |
+| `0xF0/F4/F8` | Bloque de píxeles |
+
+## Framebuffer de texto (`0xFF030000`)
+
+| Offset | Registro |
+|---|---|
+| `0x00` | Comando (1 limpiar, 2 presentar) |
+| `0x04/0x08` | Columnas / filas (máx. 200 × 100) |
+| `0x0C` | Celda (carácter | atributo << 8) |
+| `0x10/0x14` | Modo / salida actual |
+| `0xF0/F4/F8` | Bloque (celdas o atributos) |
+
+## Audio (`0xFF090000`)
+
+Voz simple: `0x00` estado, `0x04` frecuencia, `0x08` duración, `0x0C` volumen, `0x10`
+onda, `0x14` comando.
+
+Cuatro canales: comandos en `0x20`, estado en `0x24`, número de canales en `0x28`, y cada
+canal desde `0x40 + n*0x20` (frecuencia, volumen, onda, duty, attack, decay, sustain,
+release).
+
+## Blitter (`0xFF0C0000`)
+
+Comando, destino y su stride, fuente y su stride, ancho, alto, color/clave, escala, paleta,
+control, estado, píxeles escritos.
+
+## Control del sistema (`0xFFFF0000`)
+
+| Offset | Registro |
+|---|---|
+| `0x00` | Comando (1 apagar, 2 reiniciar) | `status << 8` |
+| `0x04` | Tamaño de RAM |
+| `0x08` | Características (bit0 div-fault, bit1 IEEE div) |
+| `0x0C` | Límite de pila (R/W) |
+| `0x10/0x14` | Dirección/acceso del último fallo |
+| `0x18/0x1C/0x20` | argc / argv / envp |
+
+## Interrupciones
+
+| Nº | Nombre | Nº | Nombre |
+|---|---|---|---|
+| 1 | Trap | 17 | Terminal |
+| 2 | IllegalInstruction | 18 | DMA |
+| 3 | MemoryFault | 19 | Keyboard |
+| 4 | DivisionByZero | 20 | Mouse |
+| 5 | StackOverflow | 21 | Gamepad |
+| 6 | AlignmentFault | 22 | Audio |
+| 7 | PageFault | 23 | Periph |
+| 16 | Timer | 24 | Alarm |
+
+## Registros y convenio
+
+| Registros | Uso |
+|---|---|
+| `r0`–`r3` | Argumentos enteros / puntero |
+| `f0`–`f3` | Argumentos flotantes |
+| `r0` / `f0` | Valor de retorno |
+| `r4`–`r7`, `r12` | Volátiles (el llamado puede romperlos) |
+| `r8`–`r11`, `f8`–`f15` | Preservados por el llamado |
+| `r13` (`at`) | Scratch del ensamblador: **no confiar** |
+| `r14` (`fp`), `r15` (`sp`) | Marco y pila |
+
+<Callout type="info" title="Todo esto ya está envuelto">
+No hace falta tocar los registros MMIO a mano: las cabeceras de `ceres/` los envuelven con
+funciones cómodas. Este apéndice es para cuando quieras entender qué hay debajo o exprimir
+algo que la capa no expone.
+</Callout>

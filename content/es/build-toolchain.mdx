@@ -1,0 +1,152 @@
+# Montar el toolchain
+
+Ahora que sabes compilar cada pieza, vamos a **montarlas juntas** y a dejar el entorno listo
+para trabajar.
+
+## La disposición recomendada
+
+Los tres repositorios, uno al lado del otro, es la forma más cómoda porque los scripts se
+encuentran solos:
+
+```
+Projects/
+├─ CeresASM/            → ceres.exe sale de CeresASM/Ceres/build/<preset>/bin/<config>/
+├─ Ceres-C/             → ceresc.exe sale de Ceres-C/build/<preset>/bin/<config>/
+└─ Ceres Projects/
+   └─ Ceres STDLIB/     → la librería estándar
+```
+
+Con esta disposición, la librería busca `../../Ceres-C` y `../../CeresASM`
+automáticamente.
+
+## 1. Compilar las tres piezas, en orden
+
+<Steps>
+  <Step title="CeresASM (la máquina)">
+    ```shell
+    > cd Projects/CeresASM/Ceres
+    > cmake --preset gcc
+    > cmake --build --preset gcc-release
+    ```
+  </Step>
+  <Step title="Ceres-C (el compilador)">
+    ```shell
+    > cd Projects/Ceres-C
+    > cmake --preset gcc
+    > cmake --build --preset gcc-release
+    ```
+  </Step>
+  <Step title="La librería estándar">
+    ```shell
+    > cd "Projects/Ceres Projects/Ceres STDLIB"
+    > make
+    ```
+  </Step>
+</Steps>
+
+## 2. Dejar las herramientas localizables
+
+Los scripts de la librería necesitan encontrar `ceresc` y `ceres`. Dos formas:
+
+<Tabs>
+  <Tab label="Variables de entorno">
+```powershell
+# Ruta al ejecutable de Ceres-C
+$env:CERESC = "D:\Projects\Ceres-C\build\gcc\bin\Release\ceresc.exe"
+# Ruta al ejecutable (o a su carpeta) de CeresASM
+$env:CERES_PATH = "D:\Projects\CeresASM\Ceres\build\gcc\bin\Release"
+```
+  </Tab>
+  <Tab label="Añadirlos al PATH">
+```powershell
+$env:PATH += ";D:\Projects\Ceres-C\build\gcc\bin\Release"
+$env:PATH += ";D:\Projects\CeresASM\Ceres\build\gcc\bin\Release"
+```
+  </Tab>
+</Tabs>
+
+<Callout type="warn" title="SDL3.dll viaja con ceres">
+Si compilaste con ventana, `ceres.exe` necesita **`SDL3.dll`** a su lado. Si añades la carpeta
+de `ceres` al PATH, la DLL se resuelve. Si copias solo el `.exe`, cópiale también la DLL.
+</Callout>
+
+## 3. Verificar de extremo a extremo
+
+El mejor test es un programa real. Desde la raíz de la librería:
+
+```shell title="Hola, mundo contra la librería compilada"
+> ceresc examples/hello.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+<Output>
+hello, ceres
+</Output>
+
+Y con el ayudante que usan los ejemplos:
+
+```shell
+> tools\example.ps1 hello
+> tools\example.ps1 snake            # abre una ventana (necesita SDL)
+> tools\example.ps1 snake -Terminal  # dibuja los frames como texto
+```
+
+## 4. Un programa propio, paso a paso
+
+```shell
+> mkdir mi_juego
+> notepad mi_juego/main.c
+```
+
+```c title="mi_juego/main.c"
+#include "stdio.h"
+
+int main(void)
+{
+    puts("mi primer programa ceres");
+    return 0;
+}
+```
+
+```shell
+> ceresc mi_juego/main.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 -o mi_juego/main.cres
+> ceres run mi_juego/main.cres
+```
+
+Fíjate en la separación: **`ceresc` compila y enlaza** (podría ejecutar con `--run`), y
+**`ceres run` ejecuta**. Para iterar rápido, usa `--run --clean` y no dejes artefactos:
+
+```shell
+> ceresc mi_juego/main.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run --clean
+```
+
+## 5. Errores típicos y qué significan
+
+| Síntoma | Causa |
+|---|---|
+| `cannot find ceresc` / `cannot find ceres` | Variables de entorno mal puestas o no están en el PATH |
+| `fatal error: 'stdio.h' not found` | Falta `-I include` (o la ruta es incorrecta) |
+| `CercesFS` no encontrado al abrir un fichero | Falta `fs_mount()`/`fs_format()` o `--disk` |
+| `ceres run` no abre ventana | La build no tiene SDL, o falta `SDL3.dll` |
+| `Undefined symbol: main` | El programa no define `main` (o el nombre cambió con `__asm__`) |
+| `This build has no windowed host` | Compilaste sin `CERES_ENABLE_SDL` y usas `--window` |
+
+<Callout type="tip" title="Recompilar solo lo que cambia">
+La librería no se recompila al compilar tu programa: viene del `.car`. Si cambias un fuente
+de la **librería**, vuelve a correr `make`. Si cambias tu programa, `ceresc` lo recompila
+solo.
+</Callout>
+
+## 6. Resumen de los comandos
+
+| Tarea | Comando |
+|---|---|
+| Compilar la VM | `cmake --preset gcc && cmake --build --preset gcc-release` (en `CeresASM/Ceres`) |
+| Compilar el compilador | `cmake --preset gcc && cmake --build --preset gcc-release` (en `Ceres-C`) |
+| Compilar la librería | `make` (en `Ceres STDLIB`) |
+| Compilar + ejecutar tu programa | `ceresc prog.c …libceres.car --decls … -I include --run` |
+| Ejecutar un `.cres` | `ceres run prog.cres` |
+
+<Quiz question="¿Qué fragmento compila Y ejecuta un programa en un solo paso?"
+  options="ceres run prog.cres|ceresc prog.c … --run|cmake --build|ceres asm prog.casm"
+  answer="1"
+  explain="ceresc con --run compila, ensambla, enlaza y lanza el programa en la máquina."></Quiz>

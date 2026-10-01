@@ -1,0 +1,150 @@
+# Ctype, locale, señales y setjmp
+
+## `ctype.h`
+
+Clasificación de caracteres ASCII, todo `const` (sin estado):
+
+```c
+isalnum  isalpha  isblank  iscntrl  isdigit  isgraph
+islower  isprint  ispunct  isspace  isupper  isxdigit
+tolower  toupper
+isascii  toascii          // extensiones BSD
+```
+
+```c
+for (const char* p = texto; *p; p++)
+    if (isalpha((unsigned char)*p))
+        letras++;
+```
+
+<Callout type="warn" title="Pasa unsigned char">
+Como en C, si el `char` es negativo, `isalpha(c)` recibe un valor fuera del rango seguro.
+Convierte con `(unsigned char)` salvo que sepas que el byte es ASCII.
+</Callout>
+
+## `errno.h`
+
+Una variable global, con los códigos habituales de POSIX.
+
+```c
+#include "errno.h"
+errno = 0;
+FILE* f = fopen("x", "r");
+if (!f && errno == ENOENT) puts("no existe");
+```
+
+| Código | Código | Código |
+|---|---|---|
+| `ENOENT` | `EACCES` | `ENOSPC` |
+| `ENODEV` | `EINVAL` | `EPIPE` |
+| `ENOMEM` | `EBUSY` | `EDEADLK` |
+| `EIO` | `EEXIST` | `ENOTSUP` |
+
+## `locale.h`
+
+Sólo existe el *locale* `"C"` (y `""`, `"POSIX"`, `"C.UTF-8"`). `localeconv()` describe
+sus valores (`decimal_point` es `"."`). No hay nada que configurar: el texto es UTF-8 y
+`ctype.h` es ASCII.
+
+## `signal.h`
+
+Seis señales, con matices importantes según quién las provoque:
+
+| Señal | Origen |
+|---|---|
+| `SIGABRT` | `abort()` o `raise(SIGABRT)` |
+| `SIGINT` | sólo `raise(SIGINT)` (no hay tecla de interrupción) |
+| `SIGTERM` | sólo `raise(SIGTERM)` |
+| `SIGFPE` | División por cero (si se pide; ver abajo) |
+| `SIGILL` | Instrucción ilegal |
+| `SIGSEGV` | Fallo de memoria: store a `.text`/cero, acceso desalineado, pila agotada… |
+
+```c
+#include "signal.h"
+
+static void al_abortar(int sig) { puts("abortado"); }
+signal(SIGABRT, al_abortar);
+abort();
+```
+
+<Callout type="warn" title="Las señales de hardware necesitan el módulo fault">
+`SIGFPE`, `SIGILL` y `SIGSEGV` llegan a un manejador sólo si enlazas el módulo **`fault`**
+y llamas a `sys_install_fault_handlers(0)`. Sin él, `signal()` los rechaza con `ENOSYS`.
+Está todo en **Interrupciones y fallos**.
+</Callout>
+
+## `setjmp.h` — saltos no locales
+
+Implementado en ensamblador contra el ABI fijo del compilador.
+
+```c
+#include "setjmp.h"
+
+static jmp_buf entorno;
+
+static void en_problemas(void) { longjmp(entorno, 42); }
+
+int main(void)
+{
+    int codigo = setjmp(entorno);
+    if (codigo == 0)
+    {
+        puts("camino normal");
+        en_problemas();
+    }
+    else
+        printf("volvimos con %d\n", codigo);   // 42
+    return 0;
+}
+```
+
+<Callout type="danger" title="Reglas de setjmp/longjmp">
+- Una variable local que cambie entre `setjmp` y `longjmp` tiene valor **indeterminado**
+  salvo que sea `volatile`.
+- No llames a `longjmp` cuando la función que llamó a `setjmp` ya ha retornado.
+- **No** salgas con `longjmp` de un manejador `__interrupt`: nunca ejecutaría `iret`.
+</Callout>
+
+## `assert.h`
+
+```c
+#include "assert.h"
+
+assert(vidas > 0);        // si falla: "archivo.c:12: main: assertion 'vidas > 0' failed"
+static_assert(sizeof(int) == 4, "int de 32 bits");
+```
+
+Define `NDEBUG` para quitarlos todos. `static_assert` se comprueba al compilar.
+
+## `stdbit.h` (C23)
+
+```c
+stdc_leading_zeros(x)     stdc_trailing_zeros(x)
+stdc_leading_ones(x)      stdc_trailing_ones(x)
+stdc_count_ones(x)        stdc_count_zeros(x)
+stdc_has_single_bit(x)    stdc_bit_width(x)
+stdc_bit_floor(x)         stdc_bit_ceil(x)
+stdc_first_leading_one(x) ...
+```
+
+Elige la variante según el tipo del argumento, y por debajo son `clz`/`ctz`/`popcnt` de la
+máquina.
+
+## `stdckdint.h` (C23)
+
+```c
+int r;
+unsigned long long r64;
+
+if (ckd_add(&r, a, b))     { /* desborda */ }
+if (ckd_sub(&r, a, b))     { /* desborda */ }
+if (ckd_mul(&r64, a, b))   { /* desborda */ }
+```
+
+Es exacto para todos los tipos hasta 64 bits. Para el caso rápido de `int`, usa
+`__builtin_add_overflow`.
+
+<Quiz question="¿Por qué no puedes usar longjmp para salir de un manejador __interrupt?"
+  options="Porque no compila|Porque el manejador nunca ejecutaria iret y dejaria las interrupciones enmascaradas|Porque longjmp no existe|Porque gastaria el heap"
+  answer="1"
+  explain="Un manejador debe terminar en iret; saltar fuera deja el estado de interrupcion descuadrado."></Quiz>

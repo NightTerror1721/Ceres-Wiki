@@ -1,0 +1,125 @@
+# Tareas y canales
+
+`ceres/task.h` da **corrutinas cooperativas**: funciones que corren en su propia pila y
+ceden el control. No hay preempción: entre dos llamadas que ceden, una tarea tiene la
+máquina para ella, así que no necesita cerrojos.
+
+## Lanzar tareas
+
+```c
+#include "ceres/task.h"
+
+static void parpadeo(void* arg)
+{
+    (void)arg;
+    for (;;) { led ^= 1; task_sleep_ms(500); }
+}
+
+int id = task_spawn(parpadeo, NULL, 0);    // 0 = tamano de pila por defecto (8 KiB)
+for (;;) { actualizar(); task_yield(); }
+```
+
+| Función | Notas |
+|---|---|
+| `task_spawn(fn, arg, stack_size)` | Devuelve id > 0, o `-1` (`EAGAIN`/`ENOMEM`) |
+| `task_yield()` | Deja correr a las demás que puedan |
+| `task_sleep_ms(ms)` / `task_sleep_ns(ns)` | Duerme tiempo real |
+| `task_join(id)` | Espera a que termine (`0`, `ESRCH`, `EDEADLK`) |
+| `task_exit()` | Termina esta tarea (no `main`) |
+| `task_self()` | Id de la tarea actual; **0 para `main`** |
+| `task_count()` / `task_alive(id)` | Consulta |
+
+`main()` es la tarea 0. `TASK_MAX` tareas a la vez (16 por defecto, configurable).
+
+<Callout type="tip" title="Cuando todas duermen, la máquina se apaga">
+El planificador es round-robin. Si todas las tareas están dormidas, la máquina hace
+`halt` hasta que la primera vence (con la alarma del temporizador): **no gira**. Y si
+todas esperan a algo que nadie puede dar, `task_join`/`chan_recv` devuelven `EDEADLK` en
+vez de colgarse.
+</Callout>
+
+## Canales: mensajes entre tareas
+
+Un canal es una cola de mensajes de tamaño fijo. `send` espera si está lleno y `recv`
+espera si está vacío, dejando correr a las demás.
+
+```c
+static struct chan ordenes;
+
+static void productor(void* arg)
+{
+    int valor;
+    for (int i = 0; i < 100; i++) { valor = i; chan_send(&ordenes, &valor); }
+    chan_close(&ordenes);
+}
+
+static void consumidor(void* arg)
+{
+    int valor;
+    while (chan_recv(&ordenes, &valor) == 0)
+        procesar(valor);
+}
+
+int main(void)
+{
+    chan_init(&ordenes, sizeof(int), 8);
+    task_spawn(productor, NULL, 0);
+    task_spawn(consumidor, NULL, 0);
+    for (;;) task_yield();
+}
+```
+
+`chan_try_send`/`chan_try_recv` no bloquean (`EAGAIN` si lleno/vacío). Tras `chan_close`,
+los receptores drenan lo que quede y luego reciben `EPIPE`.
+
+## Pilas seguras
+
+Cada tarea recibe una pila propia del heap. Mientras corre, el **límite de pila** de la
+máquina es el fondo de esa pila, así que desbordar es un `StackOverflow`, no memoria
+reescrita.
+
+Con el módulo `mmu` puedes además poner una **página guarda** al fondo de cada pila nueva:
+
+```c
+// USE: mmu
+mmu_guard_task_stacks(&espacio);   // cada tarea nueva recibe una pagina sin mapear debajo
+```
+
+Está detallado en **Memoria virtual (MMU)**.
+
+## Un juego con lógica en una tarea
+
+```c title="spawn.c"
+#include "stdio.h"
+#include "ceres/task.h"
+
+static volatile int frames = 0;
+
+static void reloj(void* arg)
+{
+    (void)arg;
+    while (frames < 100) { frames++; task_sleep_ms(16); }
+}
+
+int main(void)
+{
+    task_spawn(reloj, NULL, 0);
+    while (frames < 100)
+    {
+        /* la logica principal sigue a lo suyo */
+        task_yield();
+    }
+    printf("100 frames\n");
+    return 0;
+}
+```
+
+<Callout type="warn" title="Nada de llamadas de tarea desde una interrupción">
+Un manejador corre en la pila del sistema y con interrupciones enmascaradas. No llames a
+`task_*` ni a `chan_*` desde él: encola un evento y deja que una tarea lo recoja.
+</Callout>
+
+<Quiz question="¿Qué devuelve task_self() para el main()?"
+  options="1|0|-1|TASK_MAX"
+  answer="1"
+  explain="main es la primera tarea y tiene id 0; las creadas con task_spawn reciben ids mayores que cero."></Quiz>

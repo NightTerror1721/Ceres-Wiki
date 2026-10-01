@@ -1,0 +1,128 @@
+# El preprocesador
+
+Ceres-C trae un preprocesador de verdad, no un juguete: incluye, macros con `#` y `##`,
+condicionales, `__has_include` y `#pragma once`.
+
+## Incluir ficheros
+
+```c
+#include "mi_cabecera.h"     // primero junto al fichero que incluye
+#include <stdio.h>           // solo en los directorios de -I
+#include_next "algo.h"        // sigue la busqueda a partir del directorio actual
+```
+
+Puedes preguntar si algo existe:
+
+```c
+#if __has_include("ceres/music.h")
+#include "ceres/music.h"
+#define TIENE_MUSICA 1
+#endif
+```
+
+## Macros
+
+```c
+#define MAX_ENEMIGOS 64
+#define CUADRADO(x) ((x) * (x))
+#define LOG(fmt, ...) printf("[log] " fmt "\n", __VA_ARGS__)
+```
+
+Y los operadores de texto:
+
+```c
+#define TEXTO(x)   #x                  // convierte a cadena: TEXTO(hola) -> "hola"
+#define CONCAT(a,b) a##b               // pega tokens: CONCAT(PLAY,ER) -> PLAYER
+```
+
+<Callout type="tip" title="Llamadas multilínea">
+Una llamada a macro con argumentos puede ocupar **varias líneas**: el preprocesador
+absorbe las líneas siguientes hasta que cierra el paréntesis, respetando los comentarios
+y sin tragarse directivas.
+</Callout>
+
+## Condicionales
+
+```c
+#define DEBUG 1
+
+#if DEBUG
+    #define LOGD(fmt, ...) printf("[dbg] " fmt "\n", __VA_ARGS__)
+#elif defined(RELEASE)
+    #define LOGD(fmt, ...) ((void)0)
+#else
+    #error "define DEBUG o RELEASE"
+#endif
+```
+
+| Directiva | Uso |
+|---|---|
+| `#if` / `#elif` / `#else` / `#endif` | Expresiones enteras constantes |
+| `#ifdef` / `#ifndef` | ¿Está definida la macro? |
+| `defined(X)` / `defined X` | Dentro de `#if` |
+| `__has_include(...)` | ¿Existe la cabecera? |
+| `#undef` | Borra una macro |
+| `#error` / `#warning` | Falla / avisa al compilar |
+| `#pragma once` | Guarda de inclusión |
+| `#pragma warning(...)` | Activa/desactiva avisos |
+
+## Macros predefinidas
+
+| Macro | Valor |
+|---|---|
+| `__FILE__` | Nombre del fichero actual |
+| `__LINE__` | Línea actual |
+| `__func__` | Función actual (identificador, no macro) |
+| `__DATE__`, `__TIME__` | Fecha y hora de compilación |
+| `__STDC__` | `1` |
+| `__STDC_HOSTED__` | `0` (freestanding: no hay libc del sistema) |
+| `__CERESC__` | `1` |
+| `__COUNTER__` | Entero que sube en cada uso |
+| `__INCLUDE_LEVEL__` | Profundidad de inclusión |
+
+<Callout type="info" title="No hay __STDC_VERSION__">
+A propósito: Ceres-C no reclama ser conforme a una revisión concreta de C. Usa
+`__CERESC__` para detectarlo.
+</Callout>
+
+## Control de avisos
+
+```c
+#pragma warning(disable: 2001)      // silencia "double es float"
+double d = 1.0;                     // sin ruido
+#pragma warning(default: 2001)
+```
+
+Se puede usar `disable`, `enable`, `error`, `default`, `push` y `pop`. Con `-Werror` los
+avisos son errores salvo que un `#pragma` diga lo contrario.
+
+## Rutas de búsqueda
+
+| Opción | Qué hace |
+|---|---|
+| `-I dir` | Añade un directorio de includes (repetible, en orden) |
+| `--sysroot dir` | Añade `dir/include` y `dir/lib` |
+| `-D NAME[=val]` | Define una macro desde la línea de órdenes |
+
+```shell
+> ceresc prog.c ... -I include -I vendor -DDEBUG=1 -Werror
+```
+
+## Truco: construir una tabla de nombres
+
+```c
+#define COLORES(X) \
+    X(ROJO,   0xFF0000) \
+    X(VERDE,  0x00FF00) \
+    X(AZUL,   0x0000FF)
+
+#define DEF_NOMBRE(nombre, valor) const char* nombre##_txt = #nombre;
+COLORES(DEF_NOMBRE)
+
+int main(void) { puts(ROJO_txt); return 0; }   // ROJO
+```
+
+<Quiz question="¿Qué imprime CUADRADO(2+3) con #define CUADRADO(x) ((x)*(x))?"
+  options="25|11|13|2+3*2+3"
+  answer="0"
+  explain="Los paréntesis alrededor del parámetro y del todo evitan el error de precedencia: (2+3)*(2+3)=25."></Quiz>

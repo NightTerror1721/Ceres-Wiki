@@ -1,0 +1,85 @@
+# Crash-safe saves
+
+Saving a game and having the power cut halfway should not leave you with no save at all.
+`ceres/save.h` prevents it with **two alternating copies** and *checksums*.
+
+## How it works
+
+A save at `slot1` is **two files**: `slot1.a` and `slot1.b`. Each write goes to the copy
+that does **not** hold the newest good version, with a sequence number and a CRC-32. If the
+stop happens halfway, the other copy still has the previous save. On read, the newest copy
+whose *header* and CRC check out is taken.
+
+## Using it
+
+```c
+#include "ceres/save.h"
+
+struct progress { int level, lives, score; } me;
+
+unsigned int version = 0;
+if (save_read("slot1", &version, &me, sizeof me) != sizeof me || version != 2)
+    new_game(&me);               // no save, or it is from another version
+
+/* ... play ... */
+
+save_write("slot1", 2, &me, sizeof me);    // version 2, your data
+```
+
+| Function | Returns |
+|---|---|
+| `save_write(path, version, data, size)` | `0`, or `-1` |
+| `save_read(path, &version, data, cap)` | The size, or `-1` |
+| `save_load(path, &version, &size)` | `malloc`'d, or NULL |
+| `save_size(path)` / `save_exists(path)` | Size / 1 if there is a good copy |
+| `save_erase(path)` | Deletes both |
+
+The `version` is yours: it tells an old format from the current one.
+
+<Callout type="info" title="Where they are stored">
+The files go wherever `fopen` puts them: on the CeresFS disk (`slot1`, after `fs_mount`), on
+a stick (`stick0:/slot1`) or on the host (`host:slot1`). The path limit is `SAVE_PATH_MAX`
+(60); the files add `.a` and `.b`.
+</Callout>
+
+## Error handling
+
+| errno | Meaning |
+|---|---|
+| `ENOENT` | There is no good copy at all |
+| `ENOSPC` | The size does not fit in the buffer |
+| `EIO` | The file could not be written whole |
+
+```c
+if (save_write("slot1", 2, &me, sizeof me) != 0)
+    perror("save");
+```
+
+<Callout type="warn" title="No two writes at once">
+Two writes to the same save must not overlap (say, from an interrupt handler; cooperative
+tasks do not switch inside a save, so there you are safe).
+</Callout>
+
+## A slot system
+
+```c
+void save_slot(int slot, const struct progress* p)
+{
+    char path[32];
+    snprintf(path, sizeof path, "saves/slot%d", slot);
+    save_write(path, 2, p, sizeof *p);
+}
+
+int load_slot(int slot, struct progress* p)
+{
+    char path[32];
+    unsigned int v;
+    snprintf(path, sizeof path, "saves/slot%d", slot);
+    return save_read(path, &v, p, sizeof *p) == (long)sizeof *p && v == 2;
+}
+```
+
+<Quiz question="How many files does save_write create at the path 'slot1'?"
+  options="One|Two (.a and .b)|Three|None, it goes to memory"
+  answer="1"
+  explain="Two alternating copies: it writes to the one that does not hold the newest good version."></Quiz>

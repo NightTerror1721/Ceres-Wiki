@@ -1,0 +1,129 @@
+# Time and timers
+
+Ceres has **two clocks** and it is worth not confusing them:
+
+- The **tick counter**: executed instructions. It is **deterministic** (the same value on
+  every run) and is the basis of reproducibility and of game *pacing*.
+- The **real** clocks (nanoseconds, milliseconds, wall clock): they depend on the host and
+  are not deterministic.
+
+## The tick counter
+
+```c
+#include "ceres/timer.h"
+
+unsigned int t = timer_ticks();        // 32 bits (wraps every ~43 s)
+uint64_t     t64 = timer_ticks64();    // 64 bits: the good one
+```
+
+It measures **work**, not time. A `-O2` build does more work per tick than a `-O0` build, so
+a game that wants to compare budgets should measure in ticks.
+
+## Waiting
+
+```c
+timer_wait(1000);          // 1000 instructions (an exact spin, no interrupts)
+timer_wait_until(deadline);
+```
+
+## The nanosecond clock
+
+```c
+uint64_t start = timer_nanos64();
+work();
+uint64_t ms = (timer_nanos64() - start) / 1000000ull;
+printf("took %llu ms\n", ms);
+```
+
+Real host resolution: `timer_nanos_resolution()`.
+
+## Real waits (which sleep)
+
+These **sleep the machine** (they do not spin): they arm the timer's **alarm** and `halt`.
+They need no interrupt handler.
+
+```c
+timer_wait_ms(250);        // sleep 250 ms
+timer_wait_us(500);
+timer_wait_ns(1000);
+timer_wait_until_ns64(deadline);
+```
+
+And their C cousins:
+
+```c
+#include "time.h"
+sleep(2);                          // seconds
+struct timespec req = { 0, 500000000 };   // 0.5 s
+nanosleep(&req, NULL);
+```
+
+## The alarm
+
+The timer has a **real-time alarm**: an absolute instant on the nanosecond scale that
+raises interrupt **24** when it arrives.
+
+```c
+timer_alarm_at(timer_nanos64() + 1000000000ull);   // in 1 s
+uint64_t when = timer_alarm();                      // 0 if disarmed
+```
+
+<Callout type="info" title="The library's waits use the alarm">
+`timer_wait_ms`, `game_pace_ms`, `audio_wait`, `key_wait` and `getchar` sleep with the alarm
+and restore its previous value, so you can have your own alarm armed at the same time.
+</Callout>
+
+## Software timers (polled)
+
+A table of tasks fired by time, driven from your main loop:
+
+```c
+static void blink(void* ctx) { led ^= 1; }
+
+int id = timer_every(50000, blink, NULL);   // every 50000 ticks
+timer_after(100000, other, NULL);           // once
+
+for (;;) {
+    update();
+    timer_poll();        // runs whatever is due
+}
+timer_cancel(id);
+```
+
+## Calendar: `time.h`
+
+`time_t` is a **signed 64-bit integer** (seconds since 1970), and the calendar handles any
+date within ~5 million years.
+
+```c
+#include "time.h"
+
+time_t now = time(NULL);          // wall clock (not deterministic)
+struct tm* t = gmtime(&now);      // There are no time zones: localtime == gmtime!
+
+char text[64];
+strftime(text, sizeof text, "%Y-%m-%d %H:%M:%S", t);
+printf("%s\n", text);
+```
+
+`mktime` normalizes and completes; `timespec_get` with `TIME_UTC` or `TIME_MONOTONIC`.
+
+<Callout type="tip" title="clock() is real time, not instructions">
+In C, `clock()` is usually CPU time. Here it is **real time in microseconds** since the
+machine started. To measure reproducible work use `timer_ticks64()`.
+</Callout>
+
+## Choosing the right clock
+
+| You want… | Use |
+|---|---|
+| Replay a game / measure work | `timer_ticks64()` |
+| A stable 60 FPS animation | `game_pace_ms` / `timer_wait_ms` |
+| A stopwatch the user sees | `timer_millis()` |
+| A readable date | `time()` + `strftime` |
+| Schedule something in the future | `timer_alarm_at` or `timer_after` |
+
+<Quiz question="Why can the game loop be deterministic?"
+  options="Because it uses the wall clock|Because it measures a budget in instructions (ticks)|Because it sleeps|Because it does not draw"
+  answer="1"
+  explain="The tick counter is the number of instructions, identical on every run; a budget in ticks gives the same result."></Quiz>

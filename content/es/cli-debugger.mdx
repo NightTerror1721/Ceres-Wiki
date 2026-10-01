@@ -1,0 +1,118 @@
+# El depurador
+
+`ceres debug` abre un **depurador** con puntos de ruptura, *watchpoints*, paso a paso,
+backtrace, cobertura y **ejecución inversa**.
+
+```shell
+> ceres debug prog.cres                  # REPL interactivo
+> ceres debug main.casm lib.casm         # varios fuentes CASM
+> ceres debug prog.cres --no-stop-on-entry
+> ceres debug prog.cres --server         # protocolo NDJSON (para editores)
+```
+
+| Opción de `debug` | Qué hace |
+|---|---|
+| `--memory <bytes>` | Tamaño de RAM (16 MiB por defecto) |
+| `--no-stop-on-entry` | Arranca sin parar antes de la primera instrucción |
+| `--server` | Servidor NDJSON en stdin/stdout en vez del REPL |
+| `--no-history` | Desactiva el registro para ejecución inversa |
+
+Un `.cres` sin información de depuración **funciona**, pero a ciegas: `s` pasa a ser paso de
+instrucción y los breakpoints por línea avisan de que no se pueden fijar. Compila con `--debug`
+para tener líneas.
+
+## Comandos del REPL
+
+| Comando (alias) | Sintaxis | Qué hace |
+|---|---|---|
+| `q`, `quit` | `q` | Salir |
+| `h`, `help`, `?` | `h` | Lista de comandos |
+| `c`, `cont`, `continue` | `c` | Continúa hasta un breakpoint, un fallo o el final |
+| `s`, `step` | `s` | Un paso de **línea**, entrando en las llamadas |
+| `n`, `next` | `n` | Un paso de línea, ejecutando las llamadas enteras |
+| `si` | `si [n]` | `n` **instrucciones** de máquina |
+| `fin`, `finish` | `fin` | Hasta que la subrutina actual retorne |
+| `until` | `until <loc>` | Hasta una dirección, símbolo o `archivo:línea` |
+| `run`, `r` | `run` | Reiniciar desde el principio |
+| `b`, `break` | `b <loc>` o `b <loc> if <expr>` | Punto de ruptura con condición opcional |
+| `log` | `log <loc> <texto>` | Logpoint: interpola `{expresiones}` y continúa |
+| `watch` | `watch [read\|r\|rw] <var\|addr> [tam]` | Watchpoint de datos |
+| `d`, `delete` | `d [id]` | Borra un breakpoint/watch (o todos) |
+| `bl`, `breaks` | `bl` | Lista breakpoints y watches con sus aciertos |
+| `regs`, `reg`, `i` | `regs` | Registros y flags |
+| `bt`, `where` | `bt` | Pila de llamadas (exacta o reconstruida) |
+| `l`, `list` | `l [loc]` | Código fuente alrededor de la línea actual |
+| `dis`, `disas` | `dis [n]` | Desensamblado alrededor del PC |
+| `x` | `x <loc> [n]` | Volcado hexadecimal |
+| `vars` | `vars` | Globales y constantes con sus tipos |
+| `cov`, `coverage` | `cov` | Cobertura por línea (`never` = no alcanzada) |
+| `p`, `print` | `p <expr>` | Evaluar una expresión |
+| `set` | `set <reg> <valor>` | Escribir un registro |
+| `input` | `input <texto>` | Encolar una línea en la entrada del programa |
+| `attach` | `attach <n> <fichero> [cart]` | Enchufar un medio en el puerto n |
+| `detach` | `detach <n>` | Quitar el medio del puerto n |
+| `ports` | `ports` | Describir los puertos periféricos |
+| `rs` | `rs` | Paso atrás de línea (**ejecución inversa**) |
+| `rsi` | `rsi` | Paso atrás de instrucción |
+| `rc` | `rc` | Marcha atrás hasta el breakpoint anterior |
+| `goto` | `goto <tick>` | Ir a un contador de instrucciones |
+| `hist` | `hist` | Instantáneas, intervalo, tick más antiguo, coste |
+
+<Callout type="info" title="El paso es por línea de origen">
+En modo paso, se detiene solo en direcciones marcadas como «primera de línea», así que una
+seudo-instrucción de 2–3 palabras o una expansión de macro cuenta como un paso. `s`/`n`/`c`
+están acotados (10M / 200M instrucciones) para que un bucle infinito no cuelgue el depurador.
+</Callout>
+
+## Ejemplos
+
+```text title="Una sesión"
+(ceres) b main.c:12
+breakpoint 1 at main.c:12
+(ceres) b update if score > 100
+breakpoint 2 at update (conditional)
+(ceres) c
+breakpoint 1, main.c:12
+(ceres) p lives
+3
+(ceres) n
+(ceres) watch lives
+watch 3 (write, 4 bytes)
+(ceres) c
+watchpoint 3: lives = 2
+(ceres) rs
+stepped back to main.c:12
+(ceres) bt
+  #0 update+0x2a
+  #1 main+0x18
+(ceres) cov
+```
+
+## Ejecución inversa
+
+`rs`, `rsi`, `rc` y `goto` **retroceden** la ejecución. Se apoya en instantáneas periódicas:
+por defecto 47 instantáneas × 20 000 instrucciones = 1,28 millones de instrucciones de
+alcance, y cada instantánea ocupa unos pocos KiB. `hist` lo cuenta; `--no-history` lo apaga
+(útil si el programa es enorme y no necesitas rebobinar).
+
+<Callout type="tip" title="Por qué puede rebobinar">
+La máquina es **determinista**: el contador de ticks es el número de instrucciones. Guardando
+la memoria periódicamente, re-ejecutar desde la instantánea anterior reproduce exactamente el
+estado. El reloj de pared se registra y se reproduce aparte.
+</Callout>
+
+## Modo servidor (`--server`)
+
+Habla **NDJSON** en stdin/stdout (no es DAP). Peticiones
+`{"seq","type":"request","command","arguments"}`, respuestas
+`{"type":"response","request_seq","command","success","body"}` y eventos `{"type":"event",…}`.
+Comandos: `configurationDone`, `terminate`/`disconnect`, `restart`, `continue`, `next`,
+`stepIn`, `stepOut`, `stepInstruction`, `runTo`, `stepBack`, `stepBackInstruction`,
+`reverseContinue`, `runToTick`, `coverage`, `history`, `pause`, `setBreakpoints`,
+`setInstructionBreakpoints`, `setDataBreakpoints`, `evaluate`, `stackTrace`, `registers`,
+`globals`, `readMemory`, `writeMemory`, `disassemble`, `setRegister`, `goto`, `input`…
+
+<Quiz question="¿Qué comando retrocede una línea de código?"
+  options="b|rs|rc|goto"
+  answer="1"
+  explain="rs es el paso atrás de línea; rsi es de instrucción y rc marcha atrás hasta el breakpoint anterior."></Quiz>

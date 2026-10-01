@@ -1,0 +1,162 @@
+# Streams and files
+
+`stdio.h` implements `FILE`: streams over the terminal, over memory and over files on the
+Ceres disk, with the same C API.
+
+## The three standard streams
+
+```c
+extern FILE* stdin;    // reads from the terminal, with 1 character of pushback
+extern FILE* stdout;   // output                       (unbuffered)
+extern FILE* stderr;   // errors -> the host's stderr (unbuffered)
+```
+
+## Opening files
+
+```c
+FILE* f = fopen("data.txt", "w");
+if (!f) { perror("data.txt"); return 1; }
+fprintf(f, "%d\n", 42);
+fclose(f);
+```
+
+| Mode | Meaning |
+|---|---|
+| `"r"` | Read (must exist) |
+| `"w"` | Write (create, truncate) |
+| `"a"` | Append (create) |
+| `"r+"`, `"w+"`, `"a+"` | Read and write |
+| `"b"` | Binary (no newline translation) |
+
+<Callout type="warn" title="Disk files need CeresFS">
+`fopen("data.txt", ...)` uses the Ceres disk. You must format or mount it first:
+
+```c
+#include "ceres/fs.h"
+if (fs_mount() != 0) fs_format();
+```
+
+Without a CeresFS, `fopen` fails with `ENODEV`. With `ceres run --disk image.img` the disk
+is a host file and the data survives between runs.
+</Callout>
+
+## The `host:` extension
+
+If the program runs with `ceres run prog.cres --host-dir <folder>`, you can read and write
+the host's files with the `host:` prefix:
+
+```c
+FILE* log = fopen("host:log.txt", "a");
+fprintf(log, "game started\n");
+fclose(log);
+```
+
+`term:` returns a standard stream to the terminal, and `freopen` can even replace `stdout`:
+
+```c
+FILE* f = freopen("host:log.txt", "w", stdout);
+printf("this goes to the file\n");
+```
+
+## Reading
+
+```c
+size_t n = fread(buf, 1, sizeof buf, f);   // returns how many bytes it read
+int c    = fgetc(f);                       // or getc
+char* s  = fgets(line, sizeof line, f);    // a whole line (with '\n')
+```
+
+## Reading and writing structured data
+
+```c
+struct record { int level; int points; };
+struct record r = { 3, 1500 };
+
+FILE* f = fopen("save.dat", "wb");
+fwrite(&r, sizeof r, 1, f);
+fclose(f);
+
+struct record read_back;
+f = fopen("save.dat", "rb");
+fread(&read_back, sizeof read_back, 1, f);
+fclose(f);
+```
+
+## Seeking
+
+```c
+fseek(f, 0, SEEK_END);
+long size = ftell(f);
+rewind(f);
+fseek(f, 100, SEEK_SET);
+```
+
+`rewind`, `fgetpos`/`fsetpos` work too. On the terminal (which is not *seekable*), `fseek`
+returns `ESPIPE`.
+
+## Memory as a stream
+
+```c
+char buf[256];
+FILE* m = fmemopen(buf, sizeof buf, "w+");
+fprintf(m, "hello %d", 7);
+rewind(m);
+char line[64];
+fgets(line, sizeof line, m);
+fclose(m);
+```
+
+Perfect for formatting text without touching the disk.
+
+## Buffering
+
+`stdout`/`stderr` are unbuffered by default (output comes out in order and nothing is lost
+if the program dies). Files **are** buffered (`BUFSIZ` = 512 bytes = one sector). Control
+the buffer and the flush:
+
+```c
+setvbuf(f, NULL, _IOFBF, 4096);   // fully buffered (or _IOLBF, _IONBF)
+fflush(f);                        // flush now
+fflush(NULL);                     // flush ALL streams, and sync CeresFS
+```
+
+<Callout type="info" title="fflush(NULL) also syncs the disk">
+Because files live in RAM until they are closed, `fflush(NULL)` flushes every stream and
+also calls `fs_sync()`, which saves the data to the disk/host file. Useful before an abrupt
+stop.
+</Callout>
+
+## Temporary files, deleting and renaming
+
+```c
+FILE* t = tmpfile();          // "w+", removed on close
+remove("old.txt");
+rename("new.txt", "final.txt");
+```
+
+## Walking a file line by line (POSIX)
+
+```c
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    FILE* f = fopen("log.txt", "r");
+    if (!f) { perror("log.txt"); return 1; }
+
+    char* line = NULL;
+    size_t cap = 0;
+    while (getline(&line, &cap, f) >= 0)
+        printf("> %s", line);
+
+    free(line);
+    fclose(f);
+    return 0;
+}
+```
+
+<Quiz question="Which mode opens a file to append to the end without truncating it?"
+  options="r|w|a|r+"
+  answer="2"
+  explain="a opens for append (creating it if needed) and always writes at the end."></Quiz>

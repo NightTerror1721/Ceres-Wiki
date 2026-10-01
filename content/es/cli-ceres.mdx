@@ -1,0 +1,178 @@
+# El CLI de `ceres`
+
+`ceres` es la herramienta de la máquina virtual: ensambla, enlaza, archiva, ejecuta,
+desensambla, perfila y depura programas Ceres.
+
+## Invocación general
+
+```
+ceres <comando> <fichero> [opciones]
+ceres <fichero>              # atajo de "ceres run <fichero>"
+```
+
+El **primer token** elige el comando si es uno de `asm`, `link`, `ar`, `run`, `disasm`,
+`debug`, `profile`; si no, se toma como fichero de entrada y el comando es **`run`**.
+
+| Comando | Para qué |
+|---|---|
+| `asm` | Ensamblar y enlazar fuentes `.casm` |
+| `link` | Enlazar objetos `.cobj` y archivos `.car` |
+| `ar` | Crear un archivo `.car` a partir de objetos |
+| `run` | Ejecutar un `.cres` (o ensamblar y ejecutar un `.casm`) |
+| `disasm` | Desensamblar un `.cres` o `.casm` |
+| `profile` | Ejecutar contando instrucciones por línea |
+| `debug` | Depurador interactivo |
+
+<Callout type="warn" title="Detalles que sorprenden">
+- **No hay `--version`.**
+- `-h`/`--help` (y no pasar nada) imprime el uso en **stderr** y sale con **estado 2**.
+- `ceres` **no** imprime nada al ejecutar: la salida del programa va por el terminal.
+- Un fichero cuya extensión es exactamente `.cres` se carga como binario; **cualquier otra**
+  (`.casm`, `.txt`, sin extensión) se ensambla como fuente CASM.
+</Callout>
+
+## Opciones comunes
+
+| Opción | Comandos | Qué hace |
+|---|---|---|
+| `-o`, `--output <ruta>` | `asm`, `link` | Fichero de salida |
+| `-c` | `asm` | Compilar a un objeto `.cobj` |
+| `--listing` | `asm`, `run`, `profile` | Imprimir el listado con direcciones |
+| `--json` | `asm` | Diagnósticos en JSON por stdout |
+| `--debug` | `asm`, `link`, `run`, `disasm` | Tablas de líneas y símbolos |
+| `--emit-debug-json` | `asm`, `link`, `disasm` | Volcar las tablas de debug en JSON |
+| `--symtab` | `link` | Tabla de nombres entre `__symtab_start`/`__symtab_end` |
+| `--memory <bytes>` | `run`, `debug`, `profile` | RAM (por defecto **16 MiB**) |
+| `--disk <imagen>` | `run` | Fichero del anfitrión como disco |
+| `--port <n>=<img>` | `run` | Memoria en el puerto n |
+| `--cart <n>=<fichero>` | `run` | Cartucho (solo lectura) en el puerto n |
+| `--host-dir <dir>` | `run` | Raíz de los ficheros del anfitrión |
+| `--env <nombre>=<valor>` | `run` | Variable de entorno del programa |
+| `--window` / `--terminal` | `run` | Ventana o terminal |
+| `--` | `run` | Todo lo que sigue es del programa |
+
+## `ceres asm` — ensamblar
+
+```
+ceres asm <fuente.casm>... [-o <salida.cres>] [--listing] [--json] [--debug] [--emit-debug-json] [-c]
+```
+
+- Con **varias** fuentes, las ensambla y enlaza en un programa.
+- Sin `-o`: valida (ensambla y enlaza pero descarta los bytes); **no requiere `main`**.
+- Con `-o`: exige un punto de entrada (`main`).
+- `-c`: un solo fuente, produce un **objeto** `.cobj` (sin `main`).
+
+```shell
+> ceres asm examples/main.casm -o hello.cres
+> ceres asm lib.casm -o lib.cobj -c
+> ceres asm a.casm b.casm -o prog.cres --debug
+> ceres asm prog.casm --listing
+> ceres asm broken.casm --json            # [{"file":…,"line":…,"severity":"error",…}]
+```
+
+## `ceres link` — enlazar
+
+```
+ceres link <fichero.cobj|fichero.car>... -o <salida.cres> [--debug] [--symtab]
+```
+
+Necesita `-o` y un `main`. Los miembros de un `.car` solo se incluyen si resuelven un nombre
+que nada más define.
+
+```shell
+> ceres link main.cobj lib.cobj -o prog.cres
+> ceres link main.cobj libstuff.car -o prog.cres --debug --symtab
+```
+
+## `ceres ar` — archivar
+
+```
+ceres ar <salida.car> <fichero.cobj>...
+```
+
+Necesita una salida y al menos un objeto. Acepta `.cobj` y también `.car` (los reempaqueta).
+
+```shell
+> ceres ar libstuff.car strings.cobj math.cobj sort.cobj
+```
+
+## `ceres run` — ejecutar
+
+```
+ceres run <fichero.casm|fichero.cres> [--memory <bytes>] [--disk <img>] [--window | --terminal]
+         [--port <n>=<img>]... [--cart <n>=<fichero>]... [--env <n>=<v>]... [--host-dir <dir>] [-- <args>]
+```
+
+```shell
+> ceres run hello.cres
+> ceres run game.cres --memory 33554432 --disk save.img
+> ceres run game.casm --port 0=stick.img --cart 1=game.cart
+> ceres run shell.casm --host-dir ./sandbox -- --verbose input.txt
+> ceres run fb.casm --terminal      # frames de texto por la consola
+> ceres run fb.casm --window        # necesita build con SDL
+```
+
+<Callout type="info" title="Terminal o ventana">
+- `--window` abre la ventana (necesita SDL); `--terminal` nunca abre ventana.
+- Con SDL y sin `--terminal`, la ventana se abre **al mostrar el primer frame**.
+- La variable **`CERES_HEADLESS`** (distinta de `""`, `"0"`, `"false"`) fuerza modo consola.
+- `--window` tiene prioridad sobre `CERES_HEADLESS`.
+</Callout>
+
+## `ceres disasm` — desensamblar
+
+```
+ceres disasm <fichero.casm|fichero.cres> [--debug]
+```
+
+Muestra dirección, palabra cruda e instrucción. Con `--debug` anota cada palabra con tu
+`archivo:línea` (si el `.cres` se enlazó con debug, o ensamblando el `.casm` con él).
+
+```shell
+> ceres disasm hello.cres
+> ceres disasm main.casm --debug
+```
+
+## `ceres profile` — perfilar
+
+```
+ceres profile <fichero.casm|fichero.cres> [--memory <bytes>] [--listing]
+```
+
+Ejecuta contando instrucciones por línea de origen y las lista ordenadas en **stderr**.
+
+```shell
+> ceres profile examples/main.casm
+  N instructions executed
+       count      share  line
+```
+
+Un `.cres` sin información de depuración se rechaza: ensambla con `--debug` o perfila la
+fuente `.casm` directamente.
+
+## `ceres debug` — depurar
+
+```
+ceres debug <fichero.casm|fichero.cres> [<fuente2.casm> ...] [--memory <bytes>]
+            [--no-stop-on-entry] [--server] [--no-history]
+```
+
+Es el único comando que acepta **varios fuentes**. Por defecto se detiene antes de la primera
+instrucción. `--server` habla NDJSON en vez de un REPL. Lo detallamos en **El depurador**.
+
+## Códigos de salida
+
+| Situación | Código |
+|---|---|
+| Éxito (`asm`, `link`, `ar`, `disasm`, `profile`) | 0 |
+| Error de uso, `-h`/`--help`, sin args, opción desconocida | 2 |
+| Fichero no encontrado, fallo de ensamblado/enlace/ejecución | 1 |
+| `run` completado | El estado que pida el programa (los 8 bits bajos) |
+
+El estado del programa se fija escribiendo en el dispositivo de control del sistema: comando
+`1` apaga; si se escribe media palabra/palabra, el byte siguiente es el estado.
+
+<Quiz question="¿Qué hace `ceres prog.cres` sin subcomando?"
+  options="Ensamblarlo|Ejecutarlo (equivale a run)|Desensamblarlo|Nada"
+  answer="1"
+  explain="Un fichero sin subcomando se trata como 'ceres run <fichero>'."></Quiz>

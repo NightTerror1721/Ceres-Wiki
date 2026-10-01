@@ -1,0 +1,163 @@
+# Streams y ficheros
+
+`stdio.h` implementa `FILE`: streams sobre el terminal, sobre memoria y sobre ficheros en
+el disco de Ceres, con la misma API de C.
+
+## Los tres streams estándar
+
+```c
+extern FILE* stdin;    // lectura del terminal, con 1 carácter de retroceso
+extern FILE* stdout;   // salida                       (sin buffer)
+extern FILE* stderr;   // errores -> stderr del anfitrión (sin buffer)
+```
+
+## Abrir ficheros
+
+```c
+FILE* f = fopen("datos.txt", "w");
+if (!f) { perror("datos.txt"); return 1; }
+fprintf(f, "%d\n", 42);
+fclose(f);
+```
+
+| Modo | Significado |
+|---|---|
+| `"r"` | Leer (debe existir) |
+| `"w"` | Escribir (crea, trunca) |
+| `"a"` | Añadir al final (crea) |
+| `"r+"`, `"w+"`, `"a+"` | Leer y escribir |
+| `"b"` | Binario (sin traducción de saltos) |
+
+<Callout type="warn" title="Los ficheros del disco necesitan CeresFS">
+`fopen("datos.txt", ...)` usa el disco de Ceres. Antes hay que formatearlo o montarlo:
+
+```c
+#include "ceres/fs.h"
+if (fs_mount() != 0) fs_format();
+```
+
+Sin un CeresFS, `fopen` falla con `ENODEV`. Con `ceres run --disk imagen.img` el disco es
+un fichero del anfitrión y los datos sobreviven entre ejecuciones.
+</Callout>
+
+## La extensión `host:`
+
+Si el programa corre con `ceres run prog.cres --host-dir <carpeta>`, puedes leer y escribir
+ficheros del anfitrión con el prefijo `host:`:
+
+```c
+FILE* log = fopen("host:registro.txt", "a");
+fprintf(log, "partida iniciada\n");
+fclose(log);
+```
+
+`term:` devuelve un stream estándar al terminal, y `freopen` incluso puede sustituir
+`stdout`:
+
+```c
+FILE* f = freopen("host:log.txt", "w", stdout);
+printf("esto va al fichero\n");
+```
+
+## Leer
+
+```c
+size_t n = fread(buf, 1, sizeof buf, f);   // devuelve cuántos bytes leyó
+int c    = fgetc(f);                       // o getc
+char* s  = fgets(linea, sizeof linea, f);  // línea completa (con '\n')
+```
+
+## Leer y escribir estructurado
+
+```c
+struct registro { int nivel; int puntos; };
+struct registro r = { 3, 1500 };
+
+FILE* f = fopen("save.dat", "wb");
+fwrite(&r, sizeof r, 1, f);
+fclose(f);
+
+struct registro leido;
+f = fopen("save.dat", "rb");
+fread(&leido, sizeof leido, 1, f);
+fclose(f);
+```
+
+## Posicionamiento
+
+```c
+fseek(f, 0, SEEK_END);
+long tam = ftell(f);
+rewind(f);
+fseek(f, 100, SEEK_SET);
+```
+
+`rewind`, `fgetpos`/`fsetpos` también funcionan. En el terminal (que no es *seekable*),
+`fseek` devuelve `ESPIPE`.
+
+## Memoria como stream
+
+```c
+char buf[256];
+FILE* m = fmemopen(buf, sizeof buf, "w+");
+fprintf(m, "hola %d", 7);
+rewind(m);
+char linea[64];
+fgets(linea, sizeof linea, m);
+fclose(m);
+```
+
+Perfecto para dar formato a texto sin tocar el disco.
+
+## Buffering
+
+`stdout`/`stderr` no tienen buffer por defecto (la salida sale en orden y nada se pierde si
+el programa muere). Los ficheros **sí** se bufferizan (`BUFSIZ` = 512 bytes = un sector).
+Controla el buffer y el volcado:
+
+```c
+setvbuf(f, NULL, _IOFBF, 4096);   // buffer completo (o _IOLBF, _IONBF)
+fflush(f);                        // vuelca ahora
+fflush(NULL);                     // vuelca TODOS los streams, y sincroniza CeresFS
+```
+
+<Callout type="info" title="fflush(NULL) también sincroniza el disco">
+Como los ficheros viven en RAM hasta que se cierran, `fflush(NULL)` vuelca todos los
+streams y además llama a `fs_sync()`, que salva los datos al disco/fichero del anfitrión.
+Útil antes de una parada abrupta.
+</Callout>
+
+## Ficheros temporales, borrar y renombrar
+
+```c
+FILE* t = tmpfile();          // "w+", se borra al cerrar
+remove("viejo.txt");
+rename("nuevo.txt", "final.txt");
+```
+
+## Recorrer un fichero línea a línea (POSIX)
+
+```c
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    FILE* f = fopen("log.txt", "r");
+    if (!f) { perror("log.txt"); return 1; }
+
+    char* linea = NULL;
+    size_t cap = 0;
+    while (getline(&linea, &cap, f) >= 0)
+        printf("> %s", linea);
+
+    free(linea);
+    fclose(f);
+    return 0;
+}
+```
+
+<Quiz question="¿Qué modo abre un fichero para añadir al final sin borrarlo?"
+  options="r|w|a|r+"
+  answer="2"
+  explain="a abre para añadir (crea si no existe) y escribe siempre al final."></Quiz>

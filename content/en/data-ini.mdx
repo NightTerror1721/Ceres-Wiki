@@ -1,0 +1,97 @@
+# INI configuration
+
+`ceres/ini.h` reads and writes configuration files with sections, in the classic style.
+
+```ini
+; game settings
+[video]
+scale = 3
+fullscreen = yes
+
+[audio]
+volume = 0.8
+```
+
+## Read line by line (storing nothing)
+
+`ini_parse` hands each value to a function of yours:
+
+```c
+#include "ceres/ini.h"
+
+static int visit(const char* section, const char* key, const char* value, void* ctx)
+{
+    printf("[%s] %s = %s\n", section, key, value);
+    return 0;                       // non-zero stops the parse
+}
+
+int rc = ini_parse(text, visit, NULL);
+// rc < 0: stopped by the visitor. An unreadable line leaves ini_error_line.
+```
+
+## Document in memory
+
+The `struct ini` keeps every value and writes it back.
+
+```c
+struct ini cfg;
+ini_init(&cfg);
+
+ini_load(&cfg, "settings.ini");      // a missing file is just no settings
+
+int scale = ini_get_int(&cfg, "video", "scale", 2);
+int full  = ini_get_bool(&cfg, "video", "fullscreen", 0);
+float vol = ini_get_float(&cfg, "audio", "volume", 0.5f);
+const char* name = ini_get(&cfg, "player", "name", "Anonymous");
+
+ini_set_int(&cfg, "video", "scale", scale + 1);
+ini_save(&cfg, "settings.ini");
+ini_free(&cfg);
+```
+
+| Function | Returns |
+|---|---|
+| `ini_get(d, sec, key, def)` | The string, or `def` |
+| `ini_get_int` | Decimal or `0x…` (not octal) |
+| `ini_get_float` | Float |
+| `ini_get_bool` | `yes/true/on/1` vs `no/false/off/0` |
+| `ini_set*` | `0`, or `-1` (`ENOMEM`/`EINVAL`) |
+| `ini_remove` | `0`, or `-1` (`ENOENT`) |
+| `ini_write(d, &size)` | The text, `malloc`'d |
+
+## Syntax
+
+- Blank lines and lines starting with `;` or `#` are comments.
+- `[section]` opens a section; keys before it belong to section `""`.
+- `key = value` or `key: value`, with surrounding spaces trimmed.
+- A value in **double quotes** keeps spaces, `;`, `#`, and accepts `\" \\ \n \t`.
+- Section and key names are compared **without regard to case**.
+- A key given twice keeps its last value.
+
+## Writing by hand
+
+```c
+char* text = ini_write(&cfg, &size);
+fputs(text, f);
+free(text);
+```
+
+Sections are grouped in the order they first appeared; comments are not kept. A line longer
+than 512 bytes is an error (the rest are still read).
+
+<Callout type="tip" title="A pattern: settings with defaults">
+Load at startup and query with a *fallback* every time. If the file is missing or a key is
+absent, the default keeps the game running.
+
+```c
+struct ini cfg;
+ini_init(&cfg);
+ini_load(&cfg, "host:config.ini");
+int scale = ini_get_int(&cfg, "video", "scale", 2);
+```
+</Callout>
+
+<Quiz question="How do you read a value that may contain a ';'?"
+  options="Just like any other|Between double quotes|With \\;|It is not possible"
+  answer="1"
+  explain="An unquoted value ends at a ';' or '#' preceded by a space; between quotes it keeps everything and accepts escapes."></Quiz>

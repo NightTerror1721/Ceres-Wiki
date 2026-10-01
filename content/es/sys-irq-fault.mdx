@@ -1,0 +1,131 @@
+# Interrupciones y fallos
+
+La máquina tiene **64 vectores**. Los números 0–15 son excepciones (se entregan siempre);
+16–63 son interrupciones de usuario (se entregan solo con las interrupciones habilitadas).
+La librería les pone nombre en `interrupts.h`.
+
+| Nº | Nombre | Origen |
+|---|---|---|
+| 0 | Reset | El programa se reinicia |
+| 1 | Trap | `__builtin_trap()` |
+| 2 | IllegalInstruction | Opcode inválido |
+| 3 | MemoryFault | Store a `.text`/página cero, acceso ilegal |
+| 4 | DivisionByZero | División por cero (si está pedido) |
+| 5 | StackOverflow | La pila pasó su límite |
+| 6 | AlignmentFault | Acceso de 16/32 bits desalineado |
+| 7 | PageFault | Página no presente/permiso (con MMU) |
+| 16 | **Timer** | El temporizador expiró |
+| 17 | **Terminal** | Entrada disponible / fin de entrada |
+| 18 | **DMA** | Transferencia completada |
+| 19 | **Keyboard** | Un evento de tecla |
+| 20 | **Mouse** | Movimiento o botón |
+| 21 | **Gamepad** | Cambio de estado |
+| 22 | **Audio** | Un tono terminó |
+| 23 | **Periph** | Un medio se conectó o quitó |
+| 24 | **Alarm** | La alarma del temporizador |
+
+## Manejadores
+
+Se declaran con `__interrupt` y se atan con `__interrupt_vector`, **una sola vez** en todo
+el programa:
+
+```c
+#include "interrupts.h"
+
+__interrupt void mi_timer(void)
+{
+    /* corto: no printf, no malloc */
+}
+
+__interrupt_vector(IRQ_TIMER, mi_timer);
+```
+
+<Callout type="warn" title="Un dueño por vector">
+El enlazador admite un único `interrupt N` por número en todo el programa. Los módulos
+`irq`, `fault` y `mmu` atan vectores, así que si escribes tu propio manejador de un vector
+**no** enlaces el módulo que también lo posee.
+</Callout>
+
+## Atarlos en tiempo de ejecución (módulo `irq`)
+
+Como la tabla no se puede reescribir en caliente, el módulo `irq` posee los vectores de
+dispositivo una vez y reparte a funciones que tú registras:
+
+```c
+// USE: irq
+#include "ceres/irq.h"
+
+static void al_teclado(int irq) { (void)irq; hay_tecla = 1; }
+
+irq_attach(IRQ_KEYBOARD, al_tecla);
+irq_enable();                       // sti
+/* ... */
+irq_detach(IRQ_KEYBOARD);
+```
+
+`irq_attach` cubre 16–24. `irq_name(n)` da un nombre legible.
+
+## Secciones críticas
+
+```c
+unsigned int estado = irq_save();    // enmascara y dice si estaban activas
+/* ... código que no debe ser interrumpido ... */
+irq_restore(estado);                 // deja las cosas como estaban
+```
+
+`irq_save`/`irq_restore` son **inline** (un `cli` y un `sti` condicional). Se anidan. En
+`ceres/atomic.h` tienes `atomic_add/swap/cas` y `CRITICAL_BEGIN/END` construidos sobre
+ellos.
+
+## Esperar una interrupción
+
+```c
+irq_wait();                  // sti + halt, indivisibles
+irq_wait_flag(&bandera);     // duerme hasta que un manejador ponga bandera
+```
+
+<Callout type="info" title="Un halt despierta con cualquier petición">
+La máquina despierta un `halt` con **cualquier** petición que un dispositivo levante, se
+ejecute un manejador o no. Por eso `timer_wait_ms`, `key_wait` y `getchar` pueden dormir
+sin que tú escribas un manejador.
+</Callout>
+
+## Informes de fallo (módulo `fault`)
+
+Sin nada, un fallo cae al *stub* de la BIOS, que imprime una `E` y para. El módulo `fault`
+instala manejadores que **informan** y detienen la máquina, con la dirección y el acceso:
+
+```c
+// USE: fault
+#include "ceres/sys.h"
+
+sys_install_fault_handlers(0);       // puedes pasar un gancho propio
+
+/* si falla: "store 2 bytes a 0x0010001 en 0x0004A12C" y para (status 139) */
+```
+
+```c
+unsigned int donde = sys_fault_address();   // dirección de datos del fallo
+unsigned int que   = sys_fault_access();    // FAULT_READ/WRITE/FETCH | tamano << 8
+unsigned int fp    = sys_fault_frame();     // marco para backtrace_from()
+```
+
+A diferencia de los demás, `SIGFPE` (división por cero) es **reanudable**: el manejador
+informa, y cuando vuelve la máquina sigue en la instrucción siguiente a la división.
+
+## Señales de hardware
+
+Con el módulo `fault` enlazado y `sys_install_fault_handlers(0)` llamado, `signal()` acepta
+manejadores para `SIGFPE`, `SIGILL` y `SIGSEGV`. El manejador corre en la **pila del
+sistema** con interrupciones enmascaradas: corto, sin `printf` ni `malloc`; `exit()` o
+`longjmp()` sí.
+
+## Y si quieres los nombres
+
+Enlaza con **`--symtab`** y un informe de fallo (o un `backtrace_print`) te dirá la función
+y la cadena de llamadas, no solo una dirección. Mira **Backtrace y depuración**.
+
+<Quiz question="¿Cuántos dueños admite el enlazador por número de interrupción?"
+  options="Uno|Dos|64|Ninguno"
+  answer="0"
+  explain="Un único binding por vector en todo el programa; por eso los modulos opcionales se eligen con // USE:."></Quiz>

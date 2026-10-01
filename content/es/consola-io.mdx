@@ -1,0 +1,124 @@
+# printf, scanf y la consola
+
+La consola es el **dispositivo terminal**: un flujo de bytes donde tu programa lee y
+escribe. `stdio.h` la envuelve con la API de C que ya conoces, más algunos atajos rápidos
+de Ceres.
+
+## Escribir
+
+```c
+putchar('A');                 // un byte
+puts("una línea");            // cadena + '\n'
+putstr("sin salto");          // cadena sin '\n'
+printf("x=%d y=%.2f\n", x, y);
+```
+
+## La familia `printf`
+
+Es una implementación completa, no recortada:
+
+| Conversión | Imprime |
+|---|---|
+| `%d` `%i` | Entero con signo |
+| `%u` | Entero sin signo |
+| `%o` `%x` `%X` | Octal, hex minúsculas, hex mayúsculas |
+| `%b` | **Binario** (extensión de Ceres) |
+| `%c` `%s` | Carácter, cadena |
+| `%p` | Puntero |
+| `%f` `%e` `%g` | Float decimal / exponencial / compacto |
+| `%a` | Float hexadecimal |
+| `%n` | Número de caracteres escritos hasta aquí |
+| `%%` | Un `%` literal |
+
+Con banderas `- + espacio # 0`, ancho y precisión (número o `*`), y modificadores de
+longitud `hh h l ll z t j q L`. En esta máquina `ll`, `j` y `q` toman **64 bits**; `l`,
+`z` y `t` son de 32.
+
+```c
+printf("%-10s|%5d|%08.3f\n", "abc", 42, 3.14159f);
+printf("%#x  %#o  %+d\n", 255, 8, 7);
+printf("%*d\n", 6, 42);                 // ancho tomado del argumento
+```
+
+<Callout type="danger" title="El formato y los tipos deben concordar">
+En esta máquina un argumento variádico ocupa una o dos palabras según su tipo. Dar un
+`%lld` a un `int` (o un `%d` a un `long long`) **desplaza todos los argumentos
+siguientes**. El compilador lo detecta con `W3005`/`W3006` si la cadena es literal y la
+función lleva `__attribute__((format(printf,...)))`. Usa los macros `PRI*` de
+`inttypes.h` para no equivocarte.
+</Callout>
+
+## Atajos sin motor de formato
+
+Cuando sólo necesitas números, estos son más pequeños y rápidos (no enlazan el
+interrogador de formatos):
+
+```c
+putint(-42);          // -42
+putuint(4000000000u); // 4000000000
+puthex(255);          // 0xff
+putbin(5, 8);         // 00000101
+putfloat(3.14159f, 2);// 3.14
+```
+
+## Leer
+
+```c
+int c    = getchar();       // espera un byte; devuelve EOF al acabar la entrada
+int c    = getchar_nb();    // no bloquea: el byte, o -1 si no hay nada
+int n    = scanf("%d %f", &i, &f);
+int ok   = sscanf("3 4", "%d %d", &a, &b);
+```
+
+`scanf` soporta `%d %i %u %x %X %o %c %s %f %e %g %[set] %p %n %%`, ancho, `*` para
+descartar y modificadores de longitud. `%lf` es un `float` (salvo con `--soft-double`).
+
+## El flujo de error
+
+`stderr` no se mezcla con la salida del programa: bajo `ceres run` va al **stderr** del
+anfitrión, así que puedes separarlo con `2> errores.txt`.
+
+```c
+fprintf(stderr, "aviso: %s\n", mensaje);
+perror("no se pudo abrir");      // "no se pudo abrir: <strerror(errno)>"
+```
+
+## Un ejemplo completo
+
+```c title="contar.c"
+#include "stdio.h"
+#include "ctype.h"
+
+int main(void)
+{
+    long lineas = 0, palabras = 0, letras = 0;
+    int c, en_palabra = 0;
+
+    while ((c = getchar()) != EOF)
+    {
+        letras++;
+        if (c == '\n') lineas++;
+        if (isspace(c)) en_palabra = 0;
+        else if (!en_palabra) { en_palabra = 1; palabras++; }
+    }
+
+    printf("%ld %ld %ld\n", lineas, palabras, letras);
+    return 0;
+}
+```
+
+<Output title="uso">
+> type texto.txt | ceres run contar.cres
+12 84 503
+</Output>
+
+<Callout type="tip" title="El terminal no señala el fin de entrada por sí solo">
+Al leer de un **pipe o fichero**, `getchar()` devuelve `EOF` cuando se acaba. En una
+consola interactiva no hay señal de fin: el programa debe ofrecer una forma de salir
+(palabra `quit`, o leer hasta una marca). Mira `term_eof()` si quieres distinguirlo.
+</Callout>
+
+<Quiz question="¿Qué conversión de printf imprime en binario?"
+  options="%x|%b|%B|%2"
+  answer="1"
+  explain="%b es una extensión de Ceres: imprime los bits sin prefijo."></Quiz>

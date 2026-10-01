@@ -1,0 +1,109 @@
+# Virtual memory (MMU)
+
+The machine has a **two-level MMU** with 4 KiB pages, off by default. `ceres/mmu.h` lets you
+turn it on from C, do *demand paging* and put **guard pages** at the bottom of task stacks.
+
+<Callout type="warn" title="Optional module">
+The module that handles page faults (`mmu_on_fault`) binds the **PageFault (7)** vector, so
+it is requested with `// USE: mmu` and **cannot** coexist with the `fault` module, which also
+binds it.
+</Callout>
+
+## An address space
+
+A space is a **page directory** (1024 entries) and the tables below it, allocated from the
+heap.
+
+```c
+#include "ceres/mmu.h"
+
+struct mmu_space s;
+mmu_space_init(&s);                         // empty: nothing mapped
+
+mmu_identity(&s, MMU_WRITE | MMU_EXEC);     // RAM as it is: the program goes on running where it is
+mmu_activate(&s);                           // translate addresses
+
+/* ... */
+mmu_deactivate();
+mmu_space_free(&s);
+```
+
+| Function | What it does |
+|---|---|
+| `mmu_map(s, va, pa, bytes, flags)` | Maps a range (replaces the previous one) |
+| `mmu_unmap(s, va, bytes)` | Removes: an access there faults |
+| `mmu_protect(s, va, bytes, flags)` | Changes permissions of already-mapped pages |
+| `mmu_translate(s, va, &pa)` | Physical address and flags, or `-1` |
+| `mmu_identity(s, flags)` | Maps all of RAM to itself |
+| `mmu_activate` / `mmu_deactivate` / `mmu_active` | On / off / query |
+
+Flags: `MMU_WRITE`, `MMU_EXEC` (reads are always allowed when the page is present), plus
+`MMU_ACCESSED` and `MMU_DIRTY` in what `mmu_translate` returns.
+
+<Callout type="info" title="What is never translated">
+Page zero and the BIOS (`< 0x400`), the **system stack** at the end of RAM and every device
+(`0xFF000000` onward) stay physical, so they need no mapping and a fault handler can always
+run.
+</Callout>
+
+## Demand paging
+
+`mmu_on_fault(handler)` installs a handler that **decides** what to do with a fault:
+
+```c
+static int on_fault(unsigned int va, unsigned int pc, unsigned int access)
+{
+    if (in_my_table(va))
+    {
+        mmu_map(mmu_active(), va & ~(MMU_PAGE - 1), frame_of(va), MMU_PAGE, MMU_WRITE);
+        return 1;               // the instruction that faulted is retried
+    }
+    return 0;                   // report and stop (status 139)
+}
+mmu_on_fault(on_fault);
+```
+
+Returning `1` once the page is mapped makes the instruction that faulted **run again** (that
+is how on-demand loading works). Returning `0` reports and stops the program. The handler
+runs on the system stack with interrupts masked: short, no `printf`.
+
+## Guard pages
+
+To make a task stack that underflows fault instead of writing into the heap below:
+
+```c
+mmu_guard_task_stacks(&s);     // every new task gets one unmapped guard page
+```
+
+The space must identity-map the heap (`mmu_identity`). We cover it in **Tasks and channels**.
+
+## A minimal example
+
+```c title="vm.c"
+// USE: mmu
+#include "stdio.h"
+#include "ceres/mmu.h"
+
+int main(void)
+{
+    struct mmu_space s;
+    mmu_space_init(&s);
+
+    /* identity of all of RAM, read-only and executable */
+    mmu_identity(&s, MMU_EXEC);
+    mmu_activate(&s);
+    puts("paging on (RAM is read-only)");
+
+    /* a write to a global would now fault without MMU_WRITE */
+    mmu_protect(&s, 0, sys_memory_size(), MMU_WRITE | MMU_EXEC);
+
+    mmu_deactivate();
+    mmu_space_free(&s);
+    return 0;
+}
+```
+
+<Quiz question="What must you return from mmu_on_fault to retry the faulting instruction?"
+  options="0|1|-1|The page number"
+  answer="1"
+  explain="Returning 1 after mapping the page makes the instruction that faulted run again (demand paging)."></Quiz>

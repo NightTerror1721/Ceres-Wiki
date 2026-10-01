@@ -1,0 +1,108 @@
+# Pixel display
+
+The **display** is an RGB32 pixel framebuffer (`0x00RRGGBB`), up to **1280×720**, distinct
+from the text framebuffer. A frame is sent in one go and the host shows it in a window (or
+ignores it if there is none, so the program stays testable).
+
+## The basics
+
+```c
+#include "ceres/display.h"
+
+display_size(320, 200);      // 0 if it took it (this clears)
+display_clear();             // paint black and rewind the cursor
+display_put(RGB(255, 0, 0)); // one pixel from the cursor
+display_show();              // present
+```
+
+`RGB(r,g,b)` packs three channels into a pixel. `display_width()` / `display_height()` read
+the size.
+
+## Send a whole frame
+
+```c
+unsigned int* pixels = /* w*h words */;
+display_blit(pixels, 320, 200);   // set the size, clear, and send in ONE transfer
+display_show();
+```
+
+<Callout type="info" title="No vsync: you keep the pace">
+The display does not sync vertically. With a window, the host runs the machine in slices of
+instructions and shows the frame between slices. The pace is set by **how many instructions
+you spend per frame**, which is why the game loop comes with it.
+</Callout>
+
+## Indexed mode and scrolling
+
+Two "retro" touches: a pixel is **one byte** (an index into a 256-colour palette), and a
+shift moves what is presented without redrawing.
+
+```c
+display_set_mode(DISP_MODE_INDEXED);      // 1 byte per pixel
+
+unsigned int palette[256];
+for (int i = 0; i < 256; i++)
+    palette[i] = color_hsv(i * 360 / 256, 255, 255);
+display_load_palette(palette, 256);
+
+unsigned char indices[320 * 200];
+/* ... fill ... */
+display_blit8(indices, 320, 200);
+
+display_scroll(5, 0);      // the background moves 5 px left
+```
+
+<Callout type="tip" title="Why it matters">
+Indexed mode uses **a quarter** of the memory and, by changing one palette entry, you change
+the colour of every pixel that uses it at once. The scroll moves a starfield or a map
+without redrawing it.
+</Callout>
+
+## How `gfx` uses it
+
+For comfortable drawing (lines, circles, sprites), use **`gfx`**, which keeps a surface in
+RAM and sends it in one go for you:
+
+```c
+#include "ceres/gfx.h"
+
+gfx_init(320, 200);
+for (;;) {
+    gfx_clear(COL_BLACK);
+    gfx_circle_fill(160, 100, 20, COL_RED);
+    gfx_present();
+}
+```
+
+We cover it in depth in **2D drawing with gfx**.
+
+## A test pattern
+
+```c
+#include "stdio.h"
+#include "ceres/display.h"
+#include "ceres/color.h"
+
+int main(void)
+{
+    display_size(256, 192);
+    display_clear();
+    for (int y = 0; y < 192; y++)
+        for (int x = 0; x < 256; x++)
+            display_put(RGB(x, y, (x ^ y) & 255));
+    display_show();
+
+    getchar();     // wait for a key so it does not close at once
+    return 0;
+}
+```
+
+<Callout type="warn" title="The block comes before presenting">
+`display_blit` does **not** present: it clears and sends the frame. Call `display_show()`
+after. And the sequential write cursor is only rewound by `display_clear` or a size change.
+</Callout>
+
+<Quiz question="What format is a display pixel?"
+  options="0xAARRGGBB|0x00RRGGBB|Always a palette byte|0x00BBGGRR"
+  answer="1"
+  explain="In RGB32 mode it is 0x00RRGGBB (the top byte is ignored); in indexed mode it is a palette byte."></Quiz>

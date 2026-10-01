@@ -1,0 +1,113 @@
+# The software double
+
+The machine has 32-bit floating point. When you need the precision of a real `double`,
+Ceres brings **binary64 in software**.
+
+## Two ways to use it
+
+**1. Compiling with `--soft-double`.** The compiler turns `double` into a real binary64 and
+calls the routines in `ceres/f64.h` on every operation:
+
+```shell
+> ceresc prog.c build/lib/O2/libceres.car --decls ... -I include -O2 --soft-double --run
+```
+
+```c
+double x = 1.0 / 3.0;
+printf("%.17g\n", x);        // 0.33333333333333331
+```
+
+**2. Calling the API directly**, without touching the compiler:
+
+```c
+#include "ceres/f64.h"
+
+f64 a = __f64_from_i32(1);
+f64 b = __f64_from_i32(3);
+f64 c = __f64_div(a, b);
+printf("%llx\n", (unsigned long long)c);   // 3FD5555555555555
+```
+
+## The API
+
+```c
+typedef unsigned long long f64;     // the raw bits of a binary64
+
+f64 __f64_add(f64, f64);
+f64 __f64_sub(f64, f64);
+f64 __f64_mul(f64, f64);
+f64 __f64_div(f64, f64);
+f64 __f64_sqrt(f64);
+f64 __f64_neg(f64);
+int __f64_cmp(f64, f64);            // -1, 0, 1; 2 if either is NaN
+
+f64   __f64_from_f32(float);        // exact
+float __f64_to_f32(f64);            // rounded
+f64   __f64_from_i32(int);  f64 __f64_from_u32(unsigned int);
+f64   __f64_from_i64(long long);  f64 __f64_from_u64(unsigned long long);
+int   __f64_to_i32(f64);  long long __f64_to_i64(f64);
+```
+
+<Callout type="info" title="Full IEEE semantics">
+Round-to-nearest-even, subnormals, ±infinity, ±0 and NaN. A NaN result is the quiet NaN
+`0x7FF8000000000000` unless an operand was NaN, whose *payload* is kept. Converting to an
+integer truncates toward zero and saturates at the end of the range when out of range.
+</Callout>
+
+## What you can do with a `double`
+
+With `--soft-double`, addition, subtraction, multiplication, division, comparisons,
+conditions, conversions, `++`/`--`, and passing/returning by value work. `%`, the bit
+operators and shifts on a `double` do **not** work (they give `E5002`), and there is no
+`double` `sqrt`/`fmod` through an operator.
+
+```c
+double series_sum(int n)
+{
+    double s = 0.0;
+    for (int i = 1; i <= n; i++)
+        s += 1.0 / (double)i;      // each addition is a call to __f64_add
+    return s;
+}
+```
+
+## Exact printing and reading
+
+With `--soft-double`, `printf` (`%f %e %g %a`), `scanf` (`%lf`) and `strtod` use an **exact**
+decimal conversion engine with big integers (`src/fconv64.c`), not an approximation.
+`ftoa_shortest` exists only for `float`, but `%g` with 17 digits is enough for a `double`.
+
+```c
+double d = 0.1;
+printf("%.20f\n", d);      // 0.10000000000000000555
+```
+
+## `strfromf` (C23) and `ftoa_shortest`
+
+```c
+#include "stdlib.h"
+
+char buf[32];
+strfromf(buf, sizeof buf, "%.3f", 3.14159f);   // "3.142"
+ftoa_shortest(buf, sizeof buf, 0.1f);          // "0.1"
+```
+
+## When is it worth it?
+
+| Situation | Recommendation |
+|---|---|
+| A game (positions, simple physics) | `float` and `ceres/fixed.h` |
+| Money, cumulative calculations | `--soft-double` |
+| Porting code that uses `double` | `--soft-double` |
+| Maximum performance | `float` (one instruction per operation) |
+
+<Callout type="warn" title="It costs one call per operation">
+A software binary64 is correct but **slow**. Do not use it for the drawing loop: reserve
+`double` for what really needs precision (accumulators, precise physics, formatting
+results).
+</Callout>
+
+<Quiz question="What does __f64_cmp return when one operand is NaN?"
+  options="-1|0|1|2"
+  answer="3"
+  explain="The 2 distinguishes the NaN case from any real order, which is -1, 0 or 1."></Quiz>

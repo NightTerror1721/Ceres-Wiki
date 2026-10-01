@@ -1,0 +1,103 @@
+# Color y fuente
+
+## Colores
+
+Un color es `0x00RRGGBB` en un `unsigned int`. Canales de 0 a 255.
+
+```c
+#include "ceres/color.h"
+
+unsigned int c = RGB(255, 128, 0);      // naranja
+unsigned int r = COL_R(c);              // 255
+unsigned int g = COL_G(c);              // 128
+unsigned int b = COL_B(c);              // 0
+```
+
+Constantes listas: `COL_BLACK`, `COL_WHITE`, `COL_RED`, `COL_GREEN`, `COL_BLUE`,
+`COL_YELLOW`, `COL_CYAN`, `COL_MAGENTA`, `COL_GRAY`.
+
+Y utilidades:
+
+```c
+color_hsv(h, s, v)          // h en grados (cualquier entero), s y v 0..255
+color_lerp(a, b, t)         // t 0..255: 0 da a, 255 da b
+color_blend(dst, src, alpha) // src sobre dst (alpha 0..255)
+color_scale(c, factor)      // cada canal * factor/256
+```
+
+`PALETTE16` es la paleta clásica CGA/EGA de 16 colores.
+
+```c
+/* un degradado */
+for (int y = 0; y < 200; y++)
+    gfx_hline(0, y, 320, color_lerp(RGB(20, 24, 60), RGB(240, 140, 60), y * 255 / 199));
+```
+
+## La fuente de mapa de bits
+
+Una fuente de 8×8 con ASCII y Latin-1 (U+00A0–U+00FF). El texto se dibuja en el color de
+primer plano; el fondo se deja como estaba.
+
+```c
+#include "ceres/font.h"
+
+font_char(NULL, x, y, 'A', RGB(255,255,255), 1);        // un byte (Latin-1)
+font_char32(NULL, x, y, 0x00F1, COLOR, 1);              // un code point ('ñ')
+font_text(NULL, x, y, "Puntuación: 100", COLOR, 2);     // UTF-8, escala 2
+font_printf(NULL, x, y, COLOR, 1, "Nivel %d", nivel);   // con formato (max 255 chars)
+
+int ancho  = font_text_width("hola", 2);   // pixeles de la línea mas larga
+int alto   = font_text_height("a\nbc", 2); // pixeles de todas las lineas
+```
+
+El avance de un carácter sin escalar es `FONT_W` (8) de ancho y `FONT_H` (8) de alto; la
+letra ocupa 5×7, dejando una columna y una fila de separación. `scale` multiplica el
+tamaño. `\n` empieza una línea nueva en la misma `x`.
+
+## Colores en el framebuffer de texto
+
+En `ceres/textfb.h` el color es un atributo por celda:
+
+```c
+fb_set_attr(FB_ATTR(FB_BRIGHT + FB_CYAN, FB_BLACK));
+```
+
+## Ejemplo: una pantalla de título
+
+```c title="titulo.c"
+#include "ceres/gfx.h"
+#include "ceres/font.h"
+#include "ceres/color.h"
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    gfx_clear(RGB(10, 12, 24));
+    for (int i = 0; i < 40; i++)
+        gfx_circle_fill(320 / 2, 70, 30 + i, color_hsv(200 + i * 2, 180, 30 + i));
+
+    font_text(NULL, 40, 130, "MI JUEGO", RGB(255, 220, 90), 3);
+    font_text(NULL, 70, 165, "Pulsa ENTER", RGB(180, 190, 210), 1);
+
+    gfx_present();
+    getchar();
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="Texto con sombra">
+Para que el texto se lea sobre cualquier fondo, dibújalo dos veces: primero en negro
+desplazado un píxel, luego encima en su color.
+
+```c
+font_text(NULL, x + 1, y + 1, t, RGB(0,0,0), 1);
+font_text(NULL, x,     y,     t, RGB(255,255,255), 1);
+```
+</Callout>
+
+<Quiz question="¿Qué hace font_printf con la coordenada y al llegar a un '\\n'?"
+  options="Vuelve a la columna inicial|Empieza una linea nueva en la misma x|Borra la pantalla|Nada"
+  answer="1"
+  explain="Tanto font_text como font_printf empiezan la nueva linea en la misma x que les pasaste."></Quiz>

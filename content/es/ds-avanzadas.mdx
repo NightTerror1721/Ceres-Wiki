@@ -1,0 +1,178 @@
+# Árboles, heaps y más
+
+## `pqueue` — cola de prioridad
+
+Un **min-heap** ordenado por comparador. Para planificadores, caminos más cortos, temporizadores.
+
+```c
+#include "ceres/ds/pqueue.h"
+
+static int menor(const void* a, const void* b)
+{
+    return *(const int*)a - *(const int*)b;   // < 0: a sale antes
+}
+
+struct pqueue q;  pq_init(&q, sizeof(int), menor);
+int v = 5;  pq_push(&q, &v);
+int out;    pq_pop(&q, &out);      // el menor
+const int* top = (const int*)pq_peek(&q);
+pq_free(&q);
+```
+
+## `iheap` — heap con *decrease-key*
+
+Como `pqueue` pero puedes **bajar la prioridad** de un elemento ya metido o **quitarlo**
+antes de su turno, en O(log n). Es lo que necesitan Dijkstra y A*.
+
+```c
+#include "ceres/ds/iheap.h"
+struct iheap h;  ih_init(&h, sizeof(float), menor_float);
+
+float d = 5.0f;
+unsigned int id = ih_push(&h, &d);       // un handle estable
+float mejor = 2.0f;
+ih_decrease(&h, id, &mejor);             // ya no es 5, ahora es 2
+ih_remove(&h, id);                       // o quitarlo
+ih_free(&h);
+```
+
+## `rbtree` — árbol intrusivo
+
+El nodo vive en tu objeto. O(log n) garantizado para insertar, borrar y buscar. Es la base
+de `omap`.
+
+```c
+#include "ceres/ds/rbtree.h"
+
+struct tarea { int prio; struct rb_node node; };
+
+static int por_prioridad(const struct rb_node* a, const struct rb_node* b)
+{
+    return rb_entry(a, struct tarea, node)->prio - rb_entry(b, struct tarea, node)->prio;
+}
+
+struct rbtree t;  rb_init(&t, por_prioridad);
+struct tarea x = { .prio = 3 };
+rb_insert(&t, &x.node);
+
+for (struct rb_node* it = rb_first(&t); it; it = rb_next(it))
+    printf("%d\n", rb_entry(it, struct tarea, node)->prio);
+```
+
+## `skiplist` — ordenado por azar
+
+Alternativa al árbol con mucho menos código que equivocar. Guarda **punteros** a tu clave
+y valor (no los copia).
+
+```c
+#include "ceres/ds/skiplist.h"
+struct skiplist s;  skl_init(&s, cmp_cstr);
+char* k = "b";  int v = 2;
+skl_insert(&s, k, &v);
+int* found = (int*)skl_find(&s, "b");
+skl_free(&s);
+```
+
+## `lru` — caché con desalojo
+
+Mapa + lista enlazada: búsqueda O(1) y "el más viejo se va".
+
+```c
+#include "ceres/ds/lru.h"
+struct lru c;
+lru_init(&c, sizeof(int), sizeof(struct textura), 64, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+
+int k = 3;
+struct textura t = { 0 };
+lru_put(&c, &k, &t);
+struct textura* hit = (struct textura*)lru_get(&c, &k);   // NULL y, si esta, pasa al frente
+```
+
+## `slotmap` — handles estables
+
+Índices que **no se invalidan** al borrar: un handle viejo se detecta como obsoleto en vez
+de apuntar a otra cosa. Perfecto para entidades que nacen y mueren.
+
+```c
+#include "ceres/ds/slotmap.h"
+struct slotmap e;  sm_init(&e, sizeof(struct entidad));
+
+struct entidad en = { 0 };
+struct sm_handle h = sm_insert(&e, &en);
+struct entidad* p = (struct entidad*)sm_get(&e, h);   // NULL si el handle es viejo
+sm_remove(&e, h);
+sm_free(&e);
+```
+
+## `trie` — prefijos
+
+"Todas las palabras que empiezan por…". Los nodos salen de un `pool` que dimensionas tú.
+
+```c
+#include "ceres/ds/trie.h"
+static char nodos[64 * sizeof(struct trie_node)];
+struct trie t;  trie_init(&t, nodos, 64);
+
+trie_insert(&t, "casa", (void*)1);
+trie_insert(&t, "cama", (void*)2);
+if (trie_has_prefix(&t, "ca")) puts("hay palabras con 'ca'");
+void* v = trie_find(&t, "casa");
+```
+
+## `dsu` — union-find
+
+"¿Están en el mismo grupo?" en tiempo casi constante: rellenar regiones, Kruskal, agrupar
+entidades que se tocan.
+
+```c
+#include "ceres/ds/dsu.h"
+unsigned int padre[N];  unsigned char rango[N];
+struct dsu d;  dsu_init(&d, padre, rango, N);
+dsu_union(&d, 2, 5);
+if (dsu_connected(&d, 2, 5)) { /* ... */ }
+```
+
+## `bitset` y `bloom`
+
+```c
+#include "ceres/ds/bitset.h"
+unsigned int palabras[bitset_words(4096)];
+struct bitset b;  bitset_init(&b, palabras, 4096);
+bitset_set(&b, 100);
+int hay = bitset_get(&b, 100);
+int primero = bitset_find_first_clear(&b);
+```
+
+`bloom.h` es un filtro de Bloom sobre un bitset: pertenencia aproximada en muy poca memoria
+(sin falsos negativos, con algún falso positivo).
+
+```c
+#include "ceres/ds/bloom.h"
+unsigned int w[bitset_words(4096)];
+struct bloom bf;  bloom_init(&bf, w, 4096, 5);
+bloom_add(&bf, "player_42", 9);
+if (bloom_maybe_has(&bf, "player_42", 9)) { /* ... */ }
+```
+
+## `strbuf` — cadenas que crecen
+
+```c
+#include "ceres/ds/strbuf.h"
+struct strbuf sb;  sb_init(&sb);
+sb_appendf(&sb, "%d items:", n);
+sb_append(&sb, " listo");
+puts(sb_cstr(&sb));
+free(sb_take(&sb));      // te llevas la memoria
+sb_free(&sb);
+```
+
+<Callout type="tip" title="Dijkstra en tres líneas">
+`iheap` existe justo para eso: cada vez que encuentras un camino más barato a un nodo,
+`ih_decrease`; para "abandonar" un nodo, `ih_remove`. Sin iheap, un `pqueue` obliga a
+meter copias y descartar las obsoletas.
+</Callout>
+
+<Quiz question="¿Qué estructura da handles que detectan si el objeto ya fue borrado?"
+  options="vector|slotmap|lru|trie"
+  answer="1"
+  explain="slotmap lleva una generacion por slot: un handle viejo no valida y sm_get devuelve NULL."></Quiz>

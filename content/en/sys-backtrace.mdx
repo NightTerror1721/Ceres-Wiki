@@ -1,0 +1,122 @@
+# Backtrace and debugging
+
+## Logging and inspection
+
+`ceres/debug.h` is for programs under development; everything goes to the terminal through
+`printf`, so it interleaves in order with the program's output.
+
+```c
+#include "ceres/debug.h"
+
+log_set_level(LOG_DEBUG);
+LOGE("something failed: %d", errno);
+LOGW("careful");
+LOGI("state %s", name);
+LOGD("x=%d y=%d", x, y);
+
+dbg_hexdump(buffer, sizeof buffer);
+dbg_where();                    // sp, top of the heap and the room between them
+```
+
+### Measure stack
+
+```c
+dbg_stack_paint(4096);          // mark the unused stack below
+work();
+unsigned int used = dbg_stack_used();   // how far it reached (high-water)
+```
+
+### Measure work in instructions
+
+```c
+struct dbg_span s;
+dbg_span_begin(&s, "physics");
+simulate();
+dbg_span_end(&s);               // "physics: 1234567 instructions"
+```
+
+Because the clock is the instruction counter, the number is **reproducible**: the same
+measurement on every run.
+
+## Backtrace
+
+`ceres/backtrace.h` walks the call stack and (if the program was linked with `--symtab`)
+gives **names**: the function and the offset.
+
+```c
+#include "ceres/backtrace.h"
+
+unsigned int pcs[16];
+int n = backtrace(pcs, 16);
+for (int i = 0; i < n; i++)
+{
+    unsigned int off;
+    const char* fn = backtrace_symbol(pcs[i], &off);
+    printf("#%d %s+0x%x\n", i, fn ? fn : "?", off);
+}
+
+backtrace_print();              // "  #0 parse_line+0x1c" one per line
+```
+
+Link with `--symtab` to have names:
+
+```shell
+> ceresc prog.c libceres.car --decls ... -I include -O1 --symtab --run
+```
+
+<Callout type="info" title="No printf, no heap">
+The walk is written so it can be used from a **fault report** on the system stack: it calls
+no `printf` and allocates nothing. Without a symbol table, it prints bare addresses.
+</Callout>
+
+## From the fault to the code
+
+With the `fault` module linked, a fault gives you the address, the access and the frame;
+combine it with `backtrace_from`:
+
+```c
+// USE: fault
+#include "ceres/sys.h"
+#include "ceres/backtrace.h"
+#include "stdio.h"
+
+static void on_fault(int irq, unsigned int pc, unsigned int flags)
+{
+    printf("fault irq %d at pc %#x flags %#x\n", irq, pc, flags);
+    printf("data %#x (%s)\n", sys_fault_address(),
+           (sys_fault_access() & 0xFF) == FAULT_WRITE ? "write" :
+           (sys_fault_access() & 0xFF) == FAULT_READ  ? "read" : "fetch");
+    backtrace_print_from(sys_fault_frame());
+}
+
+int main(void)
+{
+    sys_install_fault_handlers(on_fault);
+    volatile int* p = (int*)1;      /* memory fault */
+    *p = 5;
+    return 0;
+}
+```
+
+<Output title="Output (with --symtab)">
+fault irq 3 at pc 0x4A12C flags 0x...
+data 0x00000001 (write)
+  #0 main+0x18
+</Output>
+
+## Reducing it to a line: `ceres disasm` and the debugger
+
+Outside the machine, the `ceres` tool ships a disassembler and a **debugger** with reverse
+execution:
+
+```shell
+> ceres disasm prog.cres --debug       # CASM with your source lines
+> ceres debug prog.cres                # REPL: breakpoints, watchpoints, stepping, backtrace...
+```
+
+With `--debug` a fault's address can be turned into `file:line`.
+
+<Quiz question="Which compiler option makes the backtrace have names?"
+  options="--debug|-g|--symtab|-O2"
+  answer="2"
+  explain="--symtab links a name/address table that backtrace_symbol consults."></Quiz>

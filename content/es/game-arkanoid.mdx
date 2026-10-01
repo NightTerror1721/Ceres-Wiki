@@ -1,0 +1,249 @@
+# Arkanoid
+
+Rompe todos los ladrillos sin que la bola caiga. Añade niveles, vidas, puntos y sonido.
+
+<GameDemo kind="arkanoid" title="Arkanoid">
+Mueve la paleta con el **ratón** o **flechas/A-D**. Vacía la pantalla de ladrillos.
+</GameDemo>
+
+## Qué añade sobre Pong
+
+- Una **rejilla de ladrillos** (una matriz de celdas).
+- **Niveles**: listas de ladrillos que se cargan por número.
+- **Vidas** y **puntos**.
+- Colisión con ladrillos y **sonido** de rebote.
+
+## El estado
+
+```c title="arkanoid.c (estado)"
+#define W 320
+#define H 240
+#define COLS 10
+#define ROWS 6
+#define BW (W / COLS)          // ancho de un ladrillo
+#define BH 12
+#define TOP 30
+#define PW 56
+#define PH 8
+#define BR 5                   // radio de la bola
+
+struct juego
+{
+    int paddle_x;
+    fixed_t ball_x, ball_y, ball_vx, ball_vy;
+    unsigned char ladrillo[ROWS][COLS];   // 0 = roto
+    int nivel, vidas, puntos, quedan;
+    int pausa, game_over, ganado;
+};
+```
+
+## Cargar un nivel
+
+Un nivel es una tabla de unos y ceros; el número indica el color (0 = hueco).
+
+```c
+static const unsigned char niveles[][ROWS][COLS] = {
+    {
+        {1,1,1,1,1,1,1,1,1,1},
+        {2,2,2,2,2,2,2,2,2,2},
+        {3,3,3,3,3,3,3,3,3,3},
+        {4,4,4,4,4,4,4,4,4,4},
+        {0,0,5,5,5,5,5,5,0,0},
+        {0,0,0,0,0,0,0,0,0,0},
+    },
+    {
+        {0,1,0,1,0,1,0,1,0,1},
+        {1,0,1,0,1,0,1,0,1,0},
+        {0,2,0,2,0,2,0,2,0,2},
+        {3,3,3,3,3,3,3,3,3,3},
+        {0,0,4,4,0,0,4,4,0,0},
+        {5,0,0,5,0,0,5,0,0,5},
+    },
+};
+
+static void cargar_nivel(struct juego* j)
+{
+    int n = sizeof niveles / sizeof niveles[0];
+    const unsigned char (*m)[ROWS][COLS] = &niveles[j->nivel % n];
+
+    j->quedan = 0;
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            j->ladrillo[r][c] = (*m)[r][c];
+            if (j->ladrillo[r][c]) j->quedan++;
+        }
+
+    j->ball_x = FIX_INT(W / 2);
+    j->ball_y = FIX_INT(H - 40);
+    j->ball_vx = FIX_INT(2);
+    j->ball_vy = FIX_INT(-3);
+    j->paddle_x = W / 2 - PW / 2;
+    j->ganado = 0;
+}
+```
+
+## Colisión con ladrillos
+
+La parte delicada: decidir si rebota en horizontal o en vertical según el solapamiento.
+
+```c
+static void golpear_ladrillos(struct juego* j)
+{
+    int cx = FIX_TO_INT(j->ball_x);
+    int cy = FIX_TO_INT(j->ball_y);
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            if (!j->ladrillo[r][c]) continue;
+
+            int lx = c * BW, ly = TOP + r * BH;
+            if (cx < lx - BR || cx > lx + BW + BR) continue;
+            if (cy < ly - BR || cy > ly + BH + BR) continue;
+
+            /* ¿rebota arriba/abajo o a los lados? compara solapamientos */
+            int solx = (cx < lx + BW / 2) ? (cx + BR) - lx : (lx + BW) - (cx - BR);
+            int soly = (cy < ly + BH / 2) ? (cy + BR) - ly : (ly + BH) - (cy - BR);
+            if (soly <= solx) j->ball_vy = -j->ball_vy;
+            else              j->ball_vx = -j->ball_vx;
+
+            j->ladrillo[r][c] = 0;
+            j->quedan--;
+            j->puntos += 10;
+            sfx_rebote();
+            return;
+        }
+}
+```
+
+## Actualizar
+
+```c
+static void actualizar(struct juego* j)
+{
+    if (j->pausa || j->game_over || j->ganado) return;
+
+    j->ball_x += j->ball_vx;
+    j->ball_y += j->ball_vy;
+
+    int cx = FIX_TO_INT(j->ball_x), cy = FIX_TO_INT(j->ball_y);
+    if (cx < BR)         { j->ball_x = FIX_INT(BR);     j->ball_vx = -j->ball_vx; }
+    if (cx > W - BR)     { j->ball_x = FIX_INT(W - BR); j->ball_vx = -j->ball_vx; }
+    if (cy < BR)         { j->ball_y = FIX_INT(BR);     j->ball_vy = -j->ball_vy; }
+
+    /* paleta */
+    if (cy > H - 24 && cy < H - 10 && j->ball_vy > 0 &&
+        cx > j->paddle_x - BR && cx < j->paddle_x + PW + BR)
+    {
+        j->ball_vy = -j->ball_vy;
+        int off = cx - (j->paddle_x + PW / 2);
+        j->ball_vx += FIX_INT(off) / 8;      // angulo segun donde da
+        j->ball_y = FIX_INT(H - 26);
+    }
+
+    golpear_ladrillos(j);
+
+    if (cy > H + 10)                          // se cayo
+    {
+        if (--j->vidas <= 0) j->game_over = 1;
+        else cargar_nivel(j);
+    }
+
+    if (j->quedan == 0)
+    {
+        j->nivel++;
+        cargar_nivel(j);
+    }
+}
+```
+
+## Sonido de rebote
+
+```c
+static void sfx_rebote(void)
+{
+    audio_play(880, 30, 140, AUDIO_SQUARE);
+}
+```
+
+## Dibujar
+
+```c
+static const unsigned int colores[6] = {
+    RGB(239, 71, 111), RGB(255, 209, 102), RGB(6, 214, 160),
+    RGB(76, 201, 240), RGB(179, 136, 255), RGB(255, 163, 0)
+};
+
+static void dibujar(const struct juego* j)
+{
+    gfx_clear(RGB(8, 10, 20));
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            if (j->ladrillo[r][c])
+                gfx_rect_fill(c * BW + 1, TOP + r * BH + 1, BW - 2, BH - 2,
+                              colores[(j->ladrillo[r][c] - 1) % 6]);
+
+    gfx_rect_fill(j->paddle_x, H - 20, PW, PH, RGB(200, 210, 230));
+    gfx_circle_fill(FIX_TO_INT(j->ball_x), FIX_TO_INT(j->ball_y), BR, RGB(255, 240, 180));
+
+    font_printf(NULL, 6, 8, RGB(180, 190, 210), 1,
+                "PUNTOS %d   VIDAS %d   NIVEL %d", j->puntos, j->vidas, j->nivel + 1);
+
+    if (j->game_over || j->ganado)
+    {
+        gfx_rect_fill(60, 100, 200, 40, RGB(0, 0, 0));
+        gfx_rect(60, 100, 200, 40, RGB(200, 200, 200));
+        font_text(NULL, 90, 108, j->ganado ? "¡COMPLETADO!" : "GAME OVER",
+                  j->ganado ? RGB(120, 240, 160) : RGB(240, 120, 120), 2);
+    }
+}
+```
+
+## El bucle
+
+```c
+int main(void)
+{
+    if (gfx_init(W, H) != 0) return 1;
+
+    struct juego j = { .vidas = 3, .nivel = 0 };
+    cargar_nivel(&j);
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);
+    input_terminal_fallback(1);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+        if (key_pressed(KEY_SPACE))  j.pausa = !j.pausa;
+
+        if (key_down(KEY_LEFT) || key_down(KEY_A))  j.paddle_x -= 6;
+        if (key_down(KEY_RIGHT) || key_down(KEY_D)) j.paddle_x += 6;
+        j.paddle_x = clamp_int(j.paddle_x, 0, W - PW);
+
+        actualizar(&j);
+        dibujar(&j);
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="Dos trucos de diseño">
+1. **Ángulo según el impacto**: desplazar `ball_vx` según dónde toca la paleta da control y
+   hace el juego divertido en vez de aleatorio.
+2. **Niveles como tablas**: un `unsigned char[ROWS][COLS]` por nivel es facilísimo de editar
+   a mano. Para más, cárgalos de un **JSON** o un **pack** (mira esas páginas).
+</Callout>
+
+<Quiz question="¿Qué determina si la bola rebota en vertical u horizontal al tocar un ladrillo?"
+  options="El color del ladrillo|Comparar los solapamientos en x e y|La velocidad|El azar"
+  answer="1"
+  explain="Comparando que eje penetra menos se decide de que cara venia el golpe."></Quiz>

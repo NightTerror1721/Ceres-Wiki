@@ -1,0 +1,114 @@
+# Vectors, lists and queues
+
+The library brings about twenty data structures. This page covers the **linear** ones. They
+all live in `ceres/ds/`. If you are not sure which to use, start with `vector`.
+
+## `vector` — an array that grows
+
+```c
+#include "ceres/ds/vector.h"
+
+struct vector v;
+vector_init(&v, sizeof(int));
+
+int* slot = (int*)vector_push(&v);   // appends a zeroed element and returns it
+*slot = 7;
+
+int x = 3;
+vector_push_copy(&v, &x);            // appends a copy
+printf("%d\n", VECTOR_GET(&v, int, 0));   // 7
+vector_free(&v);
+```
+
+`vector_at`/`vector_push` give a pointer **valid until the next push/insert/reserve** (growing
+may move the memory). Sort with `vector_sort` (qsort) or `vector_sort_stable`.
+
+## `deque` — double-ended
+
+Grows from both ends in O(1) and gives random access:
+
+```c
+#include "ceres/ds/deque.h"
+
+struct deque q;  dq_init(&q, sizeof(int));
+int v = 3;
+dq_push_back(&q, &v);  dq_push_front(&q, &v);
+int out;  dq_pop_front(&q, &out);
+int first = DEQUE_GET(&q, int, 0);
+dq_free(&q);
+```
+
+## `stack` — LIFO
+
+```c
+#include "ceres/ds/stack.h"
+struct stack s;  stack_init(&s, sizeof(int));
+int v = 5;  stack_push(&s, &v);
+int out;    stack_pop(&s, &out);
+```
+
+## Intrusive linked lists
+
+The node lives **inside** your object: no allocation, and an object can sit on several lists
+at once.
+
+```c
+#include "ceres/ds/list.h"
+
+struct job { int id; struct list_node link; };
+struct list queue;  list_init(&queue);
+
+struct job t = { 1 };  list_node_init(&t.link);
+list_push_back(&queue, &t.link);
+
+struct list_node* it;
+LIST_FOR_EACH(it, &queue)
+{
+    struct job* j = list_entry(it, struct job, link);
+    printf("%d\n", j->id);
+}
+```
+
+`LIST_FOR_EACH_SAFE` lets you remove the current node inside the loop. `slist.h` is the
+one-pointer version (for stacks and free lists).
+
+## Circular queues (for interrupts)
+
+`ringbuf.h` (bytes) and `cqueue.h` (fixed-size elements) are safe for **one producer and one
+consumer** without masking interrupts: each index has a single writer.
+
+```c
+#include "ceres/ds/cqueue.h"
+
+static unsigned char storage[16 * sizeof(int)];
+struct cqueue q;
+cq_init(&q, storage, sizeof(int), 16);    // capacity rounded to a power of 2
+
+int event = 42;
+cq_put(&q, &event);        // from the producer (an interrupt)
+int read;
+cq_get(&q, &read);         // from the consumer (the main loop)
+```
+
+```c
+#include "ceres/ds/ringbuf.h"
+unsigned char buf[256];
+struct ringbuf r;  ring_init(&r, buf, sizeof buf);
+ring_put(&r, 'A');
+int c = ring_get(&r);
+```
+
+<Callout type="tip" title="Quick rule">
+| I need… | Structure |
+|---|---|
+| An array that grows | `vector` |
+| Push/pop at both ends | `deque` |
+| LIFO | `stack` |
+| An object on several lists | `list` / `slist` |
+| To pass data from an ISR to the loop | `ringbuf` / `cqueue` |
+</Callout>
+
+<Quiz question="Which structure is safe between an interrupt and the loop without masking IRQs?"
+  options="vector|list|cqueue (one producer, one consumer)|hashmap"
+  answer="2"
+  explain="In cqueue and ringbuf each index has a single writer, so they need no mask."></Quiz>

@@ -1,0 +1,158 @@
+# Cheat sheet
+
+The whole API on one page. Standard C headers and `ceres/` modules.
+
+## Getting started
+
+| I want… | Use | Page |
+|---|---|---|
+| To build and run | `ceresc prog.c libceres.car --decls … -I include -O2 --run` | Installing |
+| To request an optional module | `// USE: irq` / `// USE: fault` / `// USE: mmu` | Installing |
+| A 64-bit `double` | `--soft-double` | The software double |
+| Debugging with names | `--symtab` | Backtrace |
+
+## Console
+
+| Function | Note |
+|---|---|
+| `puts/putstr/putchar` | Write |
+| `printf/sprintf/snprintf` | Format: `%d %u %o %x %X %b %c %s %p %f %e %g %a %n %%` |
+| `getchar/getchar_nb` | Read (blocking / non-blocking) |
+| `scanf/sscanf/fscanf` | Formatted input |
+| `line_read/line_prompt` | A whole line |
+| `read_int/read_float/read_yes_no/read_choice` | Guided input |
+| `ansi_goto/ansi_fg/ansi_bg/ansi_clear` | Colour and cursor |
+| `fopen/fclose/fread/fwrite/fgets/getline` | Streams (disk, `host:`, memory) |
+
+## Memory
+
+| Function | Note |
+|---|---|
+| `malloc/calloc/realloc/free` | TLSF heap, O(1) |
+| `aligned_alloc/posix_memalign` | Aligned |
+| `heap_stats/heap_check/heap_dump` | Diagnostics |
+| `arena_init/arena_alloc/arena_release` | Single-lifetime memory |
+| `pool_init/pool_alloc/pool_free` | Fixed-size blocks |
+
+## Strings
+
+`memcpy memmove memset memcmp memchr strlen` · `strcpy strncpy strcat strcmp strchr strrchr strstr strtok strerror` ·
+`strdup strndup strlcpy strlcat strsep memmem strcasecmp` · `atoi atoll strtof strtoll` · `qsort bsearch sort_stable`
+
+## Mathematics
+
+`fabs sqrt floor ceil trunc round fmin fmax copysign fma rcp rsqrt` (one instruction) ·
+`sin cos tan asin acos atan atan2 exp log log2 log10 pow` ·
+`sinh cosh tanh cbrt hypot ldexp frexp modf fmod remainder` ·
+`erf erfc tgamma lgamma ilogb logb nextafter` · `isnan isinf isfinite signbit fpclassify`
+
+## Time
+
+| Function | Note |
+|---|---|
+| `timer_ticks/timer_ticks64` | Instructions (**deterministic**) |
+| `timer_nanos64` | Real nanoseconds |
+| `timer_wait_ms/us/ns` | Sleep (alarm) |
+| `timer_after/timer_every/timer_poll` | Software timers |
+| `time/gmtime/mktime/strftime` | Calendar (`time_t` is 64-bit) |
+| `sleep/nanosleep` | Real wait |
+
+## Randomness and hashing
+
+`rng_seed rng_u32 rng_range rng_float rng_chance rng_shuffle` ·
+`hash_fnv1a hash_djb2 hash_murmur3 hash_crc32 hash_adler32`
+
+## Unicode
+
+`utf8_decode utf8_encode utf8_next utf8_length utf8_valid utf8_to_latin1 latin1_to_utf8` ·
+`mbrtowc wcrtomb mbsrtowcs wcsrtombs wcslen wcscmp` · `mbrtoc32 c32rtomb`
+
+## Graphics
+
+| Area | Functions |
+|---|---|
+| Display | `display_size clear show blit put set_mode set_palette blit8 scroll` |
+| Drawing | `gfx_init clear pixel line rect rect_fill circle circle_fill triangle* present` |
+| Surfaces | `gfx_surface_new/free set_target set_clip blit blit_key blit_scaled` |
+| Sprites | `sprite_draw/draw_flip/draw_scaled` · `anim_init/update/frame` · `tilemap_draw/at/tile` · `rect_overlap/contains` |
+| Font | `font_char font_char32 font_text font_printf font_text_width` |
+| Colour | `RGB COL_* color_hsv color_lerp color_blend color_scale PALETTE16` |
+| Blitter | `blitter_fill/copy/copy_key/copy_scaled/copy_indexed` |
+| Text | `fb_init clear put put_attr text printf present set_output` |
+| TUI | `tui_init window label button progress list status menu` |
+
+## Sound
+
+`audio_play stop busy wait beep note_hz play_tune` ·
+`music_play stop update row` · `channel_set note_on note_off stop` · `sfx_play sfx_update`
+
+## Input
+
+`input_init/update/terminal_fallback` · `key_down/pressed/released` · `mouse_*` · `pad_*` ·
+`key_start/get/wait/stop` (`KEYC_*`)
+
+## Storage
+
+| API | Note |
+|---|---|
+| `fs_format/mount/sync` | CeresFS |
+| `fs_open/close/read/write/seek` | By descriptor |
+| `fs_mkdir/opendir/readdir` | Directories |
+| `fs_mount_port/mount_device` | Several volumes (`stick0:/…`) |
+| `host_*`, `fopen("host:…")` | Host files |
+| `periph_present/read/write/next_event` | Sticks and cartridges |
+| `blockdev_disk/blockdev_port` | Block devices |
+
+## Data and assets
+
+`json_parse/find/index/get_*/json_writer_*` · `ini_parse/load/get_*/set_*/save` ·
+`save_write/read/load` · `pack_open/read/load/image` · `image_load/decode/encode` ·
+`lz4_compress/decompress/frame_decompress`
+
+## System
+
+| Area | Functions |
+|---|---|
+| Interrupts | `irq_attach/detach irq_save/restore irq_wait` · `__interrupt` + `__interrupt_vector` |
+| Faults | `sys_install_fault_handlers sys_fault_address/access/frame` |
+| MMU | `mmu_space_init map unmap protect activate on_fault guard_task_stacks` |
+| Tasks | `task_spawn/yield/sleep/join/exit` · `chan_init/send/recv/close` |
+| Backtrace | `backtrace backtrace_symbol backtrace_print` |
+| Args/environment | `sys_argc/argv/envp` · `getenv/setenv/unsetenv` |
+| Game | `game_init/frame_begin/end/run/quit pace_ms/pace_real` |
+
+## Data structures (`ceres/ds/`)
+
+| I need… | Structure |
+|---|---|
+| A growing array | `vector` |
+| Both ends | `deque` |
+| LIFO / FIFO | `stack` / `pqueue` |
+| An intrusive list | `list` / `slist` |
+| ISR → loop | `ringbuf` / `cqueue` |
+| Key→value hash | `hashmap` / `gmap` |
+| Ordered | `omap` / `oset` / `rbtree` / `skiplist` |
+| A static table | `flatmap` / `flatset` |
+| Multiple values | `multimap` |
+| A cache | `lru` |
+| Stable handles | `slotmap` |
+| Prefixes | `trie` |
+| Groups | `dsu` |
+| Bits / membership | `bitset` / `bloom` |
+| A growing string | `strbuf` |
+
+## Useful constants
+
+| Constant | Value |
+|---|---|
+| `INT_MAX` / `UINT_MAX` | `2147483647` / `4294967295u` |
+| `LLONG_MAX` | `9223372036854775807LL` |
+| `MB_CUR_MAX` | `4` |
+| `FOPEN_MAX` | `8` |
+| `FS_NAME_MAX` | `47` |
+| `IMAGE_MAX_SIDE` | `8192` |
+| `TASK_MAX` | `16` |
+| `MMU_PAGE` | `4096` |
+| `CERES_SYSTEM_STACK` | `4096` |
+| `DISP_MAX_WIDTH/HEIGHT` | `1280` / `720` |
+| `FB_MAX_COLS/ROWS` | `200` / `100` |

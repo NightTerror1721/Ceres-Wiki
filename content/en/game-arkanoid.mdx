@@ -1,0 +1,249 @@
+# Arkanoid
+
+Break all the bricks without letting the ball fall. Add levels, lives, score and sound.
+
+<GameDemo kind="arkanoid" title="Arkanoid">
+Move the paddle with the **mouse** or **arrows/A-D**. Clear the screen of bricks.
+</GameDemo>
+
+## What it adds over Pong
+
+- A **grid of bricks** (a matrix of cells).
+- **Levels**: lists of bricks loaded by number.
+- **Lives** and **score**.
+- Brick collision and **bounce sound**.
+
+## The state
+
+```c title="arkanoid.c (state)"
+#define W 320
+#define H 240
+#define COLS 10
+#define ROWS 6
+#define BW (W / COLS)          // width of one brick
+#define BH 12
+#define TOP 30
+#define PW 56
+#define PH 8
+#define BR 5                   // ball radius
+
+struct game_state
+{
+    int paddle_x;
+    fixed_t ball_x, ball_y, ball_vx, ball_vy;
+    unsigned char brick[ROWS][COLS];   // 0 = broken
+    int level, lives, points, remaining;
+    int paused, game_over, won;
+};
+```
+
+## Load a level
+
+A level is a table of ones and zeros; the number is the colour (0 = gap).
+
+```c
+static const unsigned char levels[][ROWS][COLS] = {
+    {
+        {1,1,1,1,1,1,1,1,1,1},
+        {2,2,2,2,2,2,2,2,2,2},
+        {3,3,3,3,3,3,3,3,3,3},
+        {4,4,4,4,4,4,4,4,4,4},
+        {0,0,5,5,5,5,5,5,0,0},
+        {0,0,0,0,0,0,0,0,0,0},
+    },
+    {
+        {0,1,0,1,0,1,0,1,0,1},
+        {1,0,1,0,1,0,1,0,1,0},
+        {0,2,0,2,0,2,0,2,0,2},
+        {3,3,3,3,3,3,3,3,3,3},
+        {0,0,4,4,0,0,4,4,0,0},
+        {5,0,0,5,0,0,5,0,0,5},
+    },
+};
+
+static void load_level(struct game_state* s)
+{
+    int n = sizeof levels / sizeof levels[0];
+    const unsigned char (*m)[ROWS][COLS] = &levels[s->level % n];
+
+    s->remaining = 0;
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            s->brick[r][c] = (*m)[r][c];
+            if (s->brick[r][c]) s->remaining++;
+        }
+
+    s->ball_x = FIX_INT(W / 2);
+    s->ball_y = FIX_INT(H - 40);
+    s->ball_vx = FIX_INT(2);
+    s->ball_vy = FIX_INT(-3);
+    s->paddle_x = W / 2 - PW / 2;
+    s->won = 0;
+}
+```
+
+## Brick collision
+
+The tricky part: deciding whether it bounces horizontally or vertically from the overlap.
+
+```c
+static void hit_bricks(struct game_state* s)
+{
+    int cx = FIX_TO_INT(s->ball_x);
+    int cy = FIX_TO_INT(s->ball_y);
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            if (!s->brick[r][c]) continue;
+
+            int bx = c * BW, by = TOP + r * BH;
+            if (cx < bx - BR || cx > bx + BW + BR) continue;
+            if (cy < by - BR || cy > by + BH + BR) continue;
+
+            /* bounce up/down or sideways? compare the overlaps */
+            int ox = (cx < bx + BW / 2) ? (cx + BR) - bx : (bx + BW) - (cx - BR);
+            int oy = (cy < by + BH / 2) ? (cy + BR) - by : (by + BH) - (cy - BR);
+            if (oy <= ox) s->ball_vy = -s->ball_vy;
+            else          s->ball_vx = -s->ball_vx;
+
+            s->brick[r][c] = 0;
+            s->remaining--;
+            s->points += 10;
+            sfx_bounce();
+            return;
+        }
+}
+```
+
+## Update
+
+```c
+static void update(struct game_state* s)
+{
+    if (s->paused || s->game_over || s->won) return;
+
+    s->ball_x += s->ball_vx;
+    s->ball_y += s->ball_vy;
+
+    int cx = FIX_TO_INT(s->ball_x), cy = FIX_TO_INT(s->ball_y);
+    if (cx < BR)         { s->ball_x = FIX_INT(BR);     s->ball_vx = -s->ball_vx; }
+    if (cx > W - BR)     { s->ball_x = FIX_INT(W - BR); s->ball_vx = -s->ball_vx; }
+    if (cy < BR)         { s->ball_y = FIX_INT(BR);     s->ball_vy = -s->ball_vy; }
+
+    /* paddle */
+    if (cy > H - 24 && cy < H - 10 && s->ball_vy > 0 &&
+        cx > s->paddle_x - BR && cx < s->paddle_x + PW + BR)
+    {
+        s->ball_vy = -s->ball_vy;
+        int off = cx - (s->paddle_x + PW / 2);
+        s->ball_vx += FIX_INT(off) / 8;      // angle from where it hits
+        s->ball_y = FIX_INT(H - 26);
+    }
+
+    hit_bricks(s);
+
+    if (cy > H + 10)                          // it fell
+    {
+        if (--s->lives <= 0) s->game_over = 1;
+        else load_level(s);
+    }
+
+    if (s->remaining == 0)
+    {
+        s->level++;
+        load_level(s);
+    }
+}
+```
+
+## Bounce sound
+
+```c
+static void sfx_bounce(void)
+{
+    audio_play(880, 30, 140, AUDIO_SQUARE);
+}
+```
+
+## Draw
+
+```c
+static const unsigned int colors[6] = {
+    RGB(239, 71, 111), RGB(255, 209, 102), RGB(6, 214, 160),
+    RGB(76, 201, 240), RGB(179, 136, 255), RGB(255, 163, 0)
+};
+
+static void draw(const struct game_state* s)
+{
+    gfx_clear(RGB(8, 10, 20));
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            if (s->brick[r][c])
+                gfx_rect_fill(c * BW + 1, TOP + r * BH + 1, BW - 2, BH - 2,
+                              colors[(s->brick[r][c] - 1) % 6]);
+
+    gfx_rect_fill(s->paddle_x, H - 20, PW, PH, RGB(200, 210, 230));
+    gfx_circle_fill(FIX_TO_INT(s->ball_x), FIX_TO_INT(s->ball_y), BR, RGB(255, 240, 180));
+
+    font_printf(NULL, 6, 8, RGB(180, 190, 210), 1,
+                "SCORE %d   LIVES %d   LEVEL %d", s->points, s->lives, s->level + 1);
+
+    if (s->game_over || s->won)
+    {
+        gfx_rect_fill(60, 100, 200, 40, RGB(0, 0, 0));
+        gfx_rect(60, 100, 200, 40, RGB(200, 200, 200));
+        font_text(NULL, 90, 108, s->won ? "COMPLETED!" : "GAME OVER",
+                  s->won ? RGB(120, 240, 160) : RGB(240, 120, 120), 2);
+    }
+}
+```
+
+## The loop
+
+```c
+int main(void)
+{
+    if (gfx_init(W, H) != 0) return 1;
+
+    struct game_state s = { .lives = 3, .level = 0 };
+    load_level(&s);
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);
+    input_terminal_fallback(1);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+        if (key_pressed(KEY_SPACE))  s.paused = !s.paused;
+
+        if (key_down(KEY_LEFT) || key_down(KEY_A))  s.paddle_x -= 6;
+        if (key_down(KEY_RIGHT) || key_down(KEY_D)) s.paddle_x += 6;
+        s.paddle_x = clamp_int(s.paddle_x, 0, W - PW);
+
+        update(&s);
+        draw(&s);
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="Two design tricks">
+1. **Angle from the impact**: shifting `ball_vx` by where it hits the paddle gives control and
+   makes the game fun rather than random.
+2. **Levels as tables**: one `unsigned char[ROWS][COLS]` per level is very easy to edit by
+   hand. For more, load them from **JSON** or a **pack** (see those pages).
+</Callout>
+
+<Quiz question="What decides whether the ball bounces vertically or horizontally on a brick?"
+  options="The brick's colour|Comparing the overlaps in x and y|The velocity|Chance"
+  answer="1"
+  explain="Comparing which axis penetrates least decides which face the ball came from."></Quiz>

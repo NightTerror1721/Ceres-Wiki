@@ -1,0 +1,284 @@
+# A 2D RPG adventure
+
+We finish with a **level-based adventure** engine: a tile map, a player, characters, dialogue,
+map transitions and a saved game.
+
+<GameDemo kind="rpg" title="Adventure">
+Move the hero with **arrows/WASD** and press **E** in front of a character or a sign to talk.
+</GameDemo>
+
+## Architecture
+
+An RPG is not very different from Sokoban: a grid + entities + rules. The difference is that
+there are **many entities** and several maps. We separate:
+
+- **Maps**: tile grids, with collision and portals.
+- **Entities**: player, NPCs, objects. A `slotmap` gives them stable handles.
+- **Global state**: current map, inventory, story flags.
+
+## The maps
+
+```c title="rpg.c (maps)"
+#include "stdio.h"
+#include "string.h"
+#include "ceres/gfx.h"
+#include "ceres/font.h"
+#include "ceres/sprite.h"
+#include "ceres/input.h"
+#include "ceres/game.h"
+#include "ceres/ds/slotmap.h"
+#include "ceres/save.h"
+
+#define TILE 16
+
+static const char* const map_town[] = {
+    "TTTTTTTTTTTTTTT",
+    "T.............T",
+    "T..H.......N..T",
+    "T.............T",
+    "T....~~~~~....T",
+    "TTTTTTTTTTTTTTT",
+};
+```
+
+| Character | Tile | Solid? |
+|---|---|---|
+| `.` | Grass | No |
+| `T` | Tree | Yes |
+| `~` | Water | Yes |
+| `H` | House | Yes |
+| `N` | Villager | No (entity) |
+
+```c
+static int solid(char c) { return c == 'T' || c == '~' || c == 'H'; }
+```
+
+## Entities with a slotmap
+
+The player and the NPCs are entities. The `slotmap` allows adding and removing without
+invalidating handles.
+
+```c
+enum kind { PLAYER, VILLAGER, CHEST };
+
+struct entity
+{
+    int x, y;
+    enum kind kind;
+    const char* dialogue;
+    struct sm_handle handle;
+};
+
+static struct slotmap entities;      // of struct entity
+```
+
+On a small map a vector is enough, but the `slotmap` scales to hundreds of entities that
+appear and disappear.
+
+## Loading the map
+
+We walk the grid, mark collisions and create the entities.
+
+```c
+static char map[32][32];
+static int map_w, map_h;
+
+static void load_map(const char* const* lines, int rows)
+{
+    map_h = rows;
+    map_w = (int)strlen(lines[0]);
+
+    sm_clear(&entities);   // in practice: sm_free + sm_init
+
+    for (int y = 0; y < map_h; y++)
+        for (int x = 0; x < map_w; x++)
+        {
+            char c = lines[y][x];
+            map[y][x] = c;
+
+            if (c == '@')
+            {
+                struct entity e = { .x = x, .y = y, .kind = PLAYER };
+                sm_insert(&entities, &e);
+            }
+            else if (c == 'N')
+            {
+                struct entity e = { .x = x, .y = y, .kind = VILLAGER,
+                                    .dialogue = "Go to the clearing and come back." };
+                sm_insert(&entities, &e);
+            }
+        }
+}
+```
+
+## Moving with collision
+
+It only moves if the target tile is not solid and there is no other entity.
+
+```c
+static void move_player(struct entity* me, int dx, int dy)
+{
+    int nx = me->x + dx, ny = me->y + dy;
+    if (nx < 0 || ny < 0 || nx >= map_w || ny >= map_h) return;
+    if (solid(map[ny][nx])) return;
+    if (occupied(nx, ny)) return;
+
+    me->x = nx;
+    me->y = ny;
+    check_portal(me);
+}
+```
+
+## Dialogue
+
+A box at the bottom; it opens on pressing E facing a cell with an NPC.
+
+```c
+static char dialogue[64];
+static int  dialogue_frames;
+
+static void talk(struct entity* player, int dx, int dy)
+{
+    struct entity* other = entity_at(player->x + dx, player->y + dy);
+    if (other && other->kind == VILLAGER)
+    {
+        strlcpy(dialogue, other->dialogue, sizeof dialogue);
+        dialogue_frames = 180;       // ~3 seconds at 60 FPS
+    }
+}
+```
+
+## Drawing
+
+```c
+static void draw(struct entity* player, int cam_x, int cam_y)
+{
+    gfx_clear(RGB(20, 40, 28));
+
+    for (int y = 0; y < map_h; y++)
+        for (int x = 0; x < map_w; x++)
+        {
+            int px = x * TILE - cam_x, py = y * TILE - cam_y;
+            char c = map[y][x];
+            if (c == 'T') gfx_circle_fill(px + 8, py + 6, 7, RGB(20, 90, 50));
+            else if (c == '~') gfx_rect_fill(px, py, TILE, TILE, RGB(27, 95, 168));
+            else if (c == 'H') gfx_rect_fill(px, py, TILE, TILE, RGB(120, 80, 50));
+        }
+
+    /* entities */
+    for (int i = 0; i < sm_len(&entities); i++)
+    {
+        /* there is no sm_at; walk with known handles or iterate internally */
+    }
+
+    /* player on top */
+    gfx_rect_fill(player->x * TILE - cam_x + 2, player->y * TILE - cam_y + 2,
+                  TILE - 4, TILE - 4, RGB(109, 148, 255));
+
+    if (dialogue_frames > 0)
+    {
+        gfx_rect_fill(4, 200 - 34, 320 - 8, 30, RGB(0, 0, 0));
+        gfx_rect(4, 200 - 34, 320 - 8, 30, RGB(120, 140, 220));
+        font_text(NULL, 10, 200 - 26, dialogue, RGB(230, 235, 245), 1);
+    }
+}
+```
+
+<Callout type="info" title="The camera follows the player">
+`cam_x = player->x * TILE - 160` (centred) and clamped to the map's bounds. When the map is
+smaller than the screen, `cam_x = 0`.
+</Callout>
+
+## Saved game
+
+```c
+struct save { int map, player_x, player_y, gold, flag; };
+
+static void save_game(struct save* s)
+{
+    save_write("saves/adventure", 1, s, sizeof *s);
+}
+
+static int load_game(struct save* s)
+{
+    unsigned int v;
+    return save_read("saves/adventure", &v, s, sizeof *s) == (long)sizeof *s && v == 1;
+}
+```
+
+## The loop
+
+```c
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    sm_init(&entities, sizeof(struct entity));
+    load_map(map_town, 6);
+
+    struct entity* player = first_player();
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);
+    input_terminal_fallback(1);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+
+        int dx = 0, dy = 0, dir = 0;
+        if (key_pressed(KEY_LEFT))  { dx = -1; dir = 1; }
+        if (key_pressed(KEY_RIGHT)) { dx = 1;  dir = 2; }
+        if (key_pressed(KEY_UP))    { dy = -1; dir = 3; }
+        if (key_pressed(KEY_DOWN))  { dy = 1;  dir = 4; }
+        if (dx || dy) move_player(player, dx, dy);
+
+        if (key_pressed(KEY_E))
+            talk(player, dir == 1 ? -1 : dir == 2 ? 1 : 0,
+                        dir == 3 ? -1 : dir == 4 ? 1 : 0);
+
+        if (dialogue_frames > 0) dialogue_frames--;
+
+        draw(player, cam_x(player), cam_y(player));
+        gfx_present();
+        game_frame_end(&g);
+    }
+
+    sm_free(&entities);
+    gfx_shutdown();
+    return 0;
+}
+```
+
+## How to grow from here
+
+<Steps>
+  <Step title="Maps in files">
+    Load the maps from `host:maps/*.txt` or from a **pack**. Each line is a row; an empty line
+    separates maps.
+  </Step>
+  <Step title="Portals">
+    A `>` character at the edge triggers `load_map(next)`. Save the current map in
+    `struct save`.
+  </Step>
+  <Step title="Inventory and flags">
+    An `hset` of flags ("has_key", "talked_to_elder") and a small inventory with a `vector`.
+    Dialogue changes based on the flags.
+  </Step>
+  <Step title="Turn-based combat">
+    A turn-based state machine: a menu (attack/item/flee), damage with `rng`, and the same
+    `slotmap` for enemies.
+  </Step>
+</Steps>
+
+<Callout type="tip" title="The same engine for many games">
+Grid + entities + interaction is the basis of Sokoban, an RPG, a roguelike or a level-based
+puzzle game. Change the drawing and the rules, not the architecture.
+</Callout>
+
+<Quiz question="Which library structure gives stable handles for entities that are born and die?"
+  options="vector|slotmap|strbuf|bitset"
+  answer="1"
+  explain="slotmap: each handle carries a generation, so an old handle is detected as stale."></Quiz>

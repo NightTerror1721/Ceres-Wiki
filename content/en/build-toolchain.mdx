@@ -1,0 +1,151 @@
+# Wiring the toolchain
+
+Now that you know how to build each piece, let us **put them together** and leave the
+environment ready to work.
+
+## The recommended layout
+
+The three repositories, side by side, is the most comfortable arrangement because the scripts
+find each other:
+
+```
+Projects/
+├─ CeresASM/            → ceres.exe comes from CeresASM/Ceres/build/<preset>/bin/<config>/
+├─ Ceres-C/             → ceresc.exe comes from Ceres-C/build/<preset>/bin/<config>/
+└─ Ceres Projects/
+   └─ Ceres STDLIB/     → the standard library
+```
+
+With this layout, the library looks for `../../Ceres-C` and `../../CeresASM` automatically.
+
+## 1. Build all three, in order
+
+<Steps>
+  <Step title="CeresASM (the machine)">
+    ```shell
+    > cd Projects/CeresASM/Ceres
+    > cmake --preset gcc
+    > cmake --build --preset gcc-release
+    ```
+  </Step>
+  <Step title="Ceres-C (the compiler)">
+    ```shell
+    > cd Projects/Ceres-C
+    > cmake --preset gcc
+    > cmake --build --preset gcc-release
+    ```
+  </Step>
+  <Step title="The standard library">
+    ```shell
+    > cd "Projects/Ceres Projects/Ceres STDLIB"
+    > make
+    ```
+  </Step>
+</Steps>
+
+## 2. Make the tools findable
+
+The library scripts need to find `ceresc` and `ceres`. Two ways:
+
+<Tabs>
+  <Tab label="Environment variables">
+```powershell
+# Path to the Ceres-C executable
+$env:CERESC = "D:\Projects\Ceres-C\build\gcc\bin\Release\ceresc.exe"
+# Path to the CeresASM executable (or its folder)
+$env:CERES_PATH = "D:\Projects\CeresASM\Ceres\build\gcc\bin\Release"
+```
+  </Tab>
+  <Tab label="Add them to PATH">
+```powershell
+$env:PATH += ";D:\Projects\Ceres-C\build\gcc\bin\Release"
+$env:PATH += ";D:\Projects\CeresASM\Ceres\build\gcc\bin\Release"
+```
+  </Tab>
+</Tabs>
+
+<Callout type="warn" title="SDL3.dll travels with ceres">
+If you built with a window, `ceres.exe` needs **`SDL3.dll`** next to it. If you add the `ceres`
+folder to PATH, the DLL resolves. If you copy only the `.exe`, copy the DLL too.
+</Callout>
+
+## 3. Verify end to end
+
+The best test is a real program. From the library root:
+
+```shell title="Hello, world against the built library"
+> ceresc examples/hello.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+<Output>
+hello, ceres
+</Output>
+
+And with the helper the examples use:
+
+```shell
+> tools\example.ps1 hello
+> tools\example.ps1 snake            # opens a window (needs SDL)
+> tools\example.ps1 snake -Terminal  # draws the frames as text
+```
+
+## 4. Your own program, step by step
+
+```shell
+> mkdir my_game
+> notepad my_game/main.c
+```
+
+```c title="my_game/main.c"
+#include "stdio.h"
+
+int main(void)
+{
+    puts("my first ceres program");
+    return 0;
+}
+```
+
+```shell
+> ceresc my_game/main.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 -o my_game/main.cres
+> ceres run my_game/main.cres
+```
+
+Note the separation: **`ceresc` compiles and links** (it could run with `--run`), and
+**`ceres run` executes**. To iterate quickly, use `--run --clean` and leave no artifacts:
+
+```shell
+> ceresc my_game/main.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run --clean
+```
+
+## 5. Typical errors and what they mean
+
+| Symptom | Cause |
+|---|---|
+| `cannot find ceresc` / `cannot find ceres` | Wrong environment variables or not on the PATH |
+| `fatal error: 'stdio.h' not found` | Missing `-I include` (or a wrong path) |
+| `CeresFS` not found when opening a file | Missing `fs_mount()`/`fs_format()` or `--disk` |
+| `ceres run` opens no window | The build has no SDL, or `SDL3.dll` is missing |
+| `Undefined symbol: main` | The program defines no `main` (or its name changed with `__asm__`) |
+| `This build has no windowed host` | You built without `CERES_ENABLE_SDL` and use `--window` |
+
+<Callout type="tip" title="Only rebuild what changes">
+The library is not recompiled when you build your program: it comes from the `.car`. If you
+change a **library** source, run `make` again. If you change your program, `ceresc` recompiles
+just that.
+</Callout>
+
+## 6. Command summary
+
+| Task | Command |
+|---|---|
+| Build the VM | `cmake --preset gcc && cmake --build --preset gcc-release` (in `CeresASM/Ceres`) |
+| Build the compiler | `cmake --preset gcc && cmake --build --preset gcc-release` (in `Ceres-C`) |
+| Build the library | `make` (in `Ceres STDLIB`) |
+| Build + run your program | `ceresc prog.c …libceres.car --decls … -I include --run` |
+| Run a `.cres` | `ceres run prog.cres` |
+
+<Quiz question="Which single step compiles AND runs a program?"
+  options="ceres run prog.cres|ceresc prog.c … --run|cmake --build|ceres asm prog.casm"
+  answer="1"
+  explain="ceresc with --run compiles, assembles, links and launches the program on the machine."></Quiz>

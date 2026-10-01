@@ -1,0 +1,136 @@
+# The disk and CeresFS
+
+The machine has a disk of **512-byte sectors**. On top of it, the library mounts
+**CeresFS**, a FAT-based filesystem that makes `fopen` real.
+
+## Format and mount
+
+```c
+#include "ceres/fs.h"
+
+if (fs_mount() != 0)          // is there already a CeresFS?
+    if (fs_format() != 0)     // no: format it (version 2, with directories)
+    {
+        perror("disk");
+        return 1;
+    }
+```
+
+Without a CeresFS, `fopen` fails with `ENODEV`. With `ceres run prog.cres --disk image.img`
+the disk is a host file and **the data survives** between runs; without it, the disk (64
+sectors = 32 KiB) lives only while the program runs.
+
+## Files
+
+```c
+int fd = fs_open("save.dat", FS_O_CREAT | FS_O_RDWR);
+fs_write(fd, data, sizeof data);
+fs_seek(fd, 0, FS_SEEK_SET);
+fs_read(fd, buffer, sizeof buffer);
+fs_close(fd);
+
+fs_remove("old.dat");
+fs_rename("tmp.dat", "final.dat");
+
+struct fs_stat st;
+fs_stat("final.dat", &st);
+printf("%u bytes, modified %u\n", st.size, st.mtime);
+```
+
+<Callout type="info" title="CeresFS always sits under fopen">
+`fopen`, `fprintf`, `fgets`… **are** CeresFS. The `fs_*` API is the direct layer; `stdio`
+is the convenient one. Use whichever you prefer: they are the same disk.
+</Callout>
+
+## Directories (version 2)
+
+```c
+fs_mkdir("saves");
+int fd = fs_open("saves/slot1.dat", FS_O_CREAT | FS_O_RDWR);
+```
+
+Names up to **47** characters, `/` separates the parts, `.` and `..` work. Walking a
+directory:
+
+```c
+struct fs_dir dir;
+if (fs_opendir("saves", &dir) == 0)
+{
+    struct fs_dirent* e;
+    while ((e = fs_readdir(&dir)) != NULL)
+        printf("%-20s %6u %s\n", e->name, e->size, e->is_dir ? "<dir>" : "");
+    fs_closedir(&dir);
+}
+```
+
+In version 1 (old disks) there are no directories, names are 23 characters and `fs_mkdir`
+fails with `ENOTSUP`.
+
+## Several volumes at once
+
+You can mount up to **5** volumes: the internal disk and whatever is in the peripheral
+ports. Each has a name (`disk`, `stick0`, `cart1`, or one you choose), and paths carry it in
+front.
+
+```c
+fs_mount_port(0);                              // "stick0" or "cart0"
+FILE* f = fopen("stick0:/saves/save.dat", "r");
+f = fopen("disk:/config.ini", "w");            // "disk" is the internal disk
+fs_unmount_point("stick0");
+```
+
+A path with no prefix (`"config.ini"`) means `disk`, so single-disk programs keep working.
+
+## Sync and check
+
+```c
+fs_sync();                       // flush FAT, directories and files to the device
+fs_flush();                      // same, for one volume
+unsigned int total = fs_total_bytes();
+unsigned int free = fs_free_bytes();
+```
+
+<Callout type="warn" title="There is no journal">
+A stop in the middle of a write can leave the volume inconsistent. `fs_check` finds it and,
+with repair, fixes it:
+
+```c
+struct fs_check_report r;
+if (fs_check("disk", 0, &r) != 0)
+{
+    printf("%u orphans, %u cross-linked\n", r.lost_clusters, r.cross_linked);
+    fs_check("disk", 1, &r);      // repair (no open files)
+}
+```
+</Callout>
+
+## Example: a persistent counter
+
+```c title="counter.c"
+#include "stdio.h"
+#include "ceres/fs.h"
+
+int main(void)
+{
+    if (fs_mount() != 0 && fs_format() != 0) { perror("disk"); return 1; }
+
+    int times = 0;
+    FILE* f = fopen("counter.txt", "r");
+    if (f) { fscanf(f, "%d", &times); fclose(f); }
+
+    times++;
+    f = fopen("counter.txt", "w");
+    fprintf(f, "%d\n", times);
+    fclose(f);                 // closing flushes to the disk
+
+    printf("this program has run %d times\n", times);
+    return 0;
+}
+```
+
+Run it with `--disk demo.img` and watch the counter climb.
+
+<Quiz question="Which error does fopen give if the disk has no CeresFS?"
+  options="ENOENT|ENODEV|EACCES|EIO"
+  answer="1"
+  explain="ENODEV: no device/FS mounted. You must call fs_format or fs_mount."></Quiz>

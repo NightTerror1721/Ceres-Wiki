@@ -1,0 +1,175 @@
+# The `ceresc` CLI
+
+`ceresc` is the compiler: it preprocesses, compiles, assembles, links and (with `--run`) runs.
+Inside, it launches `ceres asm -c`, `ceres link` and `ceres run` as child processes.
+
+## Usage
+
+```
+ceresc <file.c|.casm|.cobj|.car>... [-o <output>] [-I <dir>] [-D <n>[=<v>]]
+       [-L <dir>] [-l <name>] [--sysroot <dir>]
+       [--emit-ast] [--emit-ir] [-E] [-S | --run] [--clean | --clean-keep-casm]
+       [--decls <f.casm>]... [--emit-decls <f.casm>]
+       [--ceres-path <dir|file>] [--run-arg <arg>]... [--symtab]
+       [-Werror] [-O<level>] [-f<opt>] [-- <arguments>...]
+ceresc --version | --help
+```
+
+Each input's kind is decided by its **extension**:
+
+| Extension | Treated as |
+|---|---|
+| `.casm` | Assembly (assembled and linked) |
+| `.cobj` | Object (passed to `ceres link`) |
+| `.car` | Archive (passed to `ceres link`) |
+| anything else | **C** (compiled) |
+
+## Input / output
+
+| Option | What it does |
+|---|---|
+| `-o <output>` | With **one** `.c` and no `--run`: names the `.casm`. Otherwise, names the program |
+| `-I <dir>` / `-Idir` | Include directory (repeatable, in order) |
+| `-D <n>[=<v>]` | Defines a macro (`-DNAME` = `1`; repeatable) |
+| `-L <dir>` / `-l <name>` | Library directory and name to link (only with `--run`) |
+| `--sysroot <dir>` | Adds `<dir>/include` and `<dir>/lib` (after `-I`/`-L`) |
+
+```shell
+> ceresc main.c                                       # writes main.casm
+> ceresc main.c -o out.casm
+> ceresc main.c -I include -DDEBUG=1
+> ceresc main.c -L lib -lceres --sysroot /opt/ceres --run
+```
+
+<Callout type="info" title="`-l` looks for lib<name>.car, then .cobj">
+It only has an effect with `--run`; without it, it warns (`'-l' is only used when linking`).
+If it is not found, it fails listing the directories searched.
+</Callout>
+
+## Inspect the pipeline
+
+| Option | Shows |
+|---|---|
+| `-E` | The **preprocessed** source |
+| `--emit-ast` | The typed AST (after semantic analysis) |
+| `--emit-ir` | The IR **after optimizing** |
+| `-S` | Stops at the `.casm` (**default**) |
+| `--run` | Assembles, links and runs |
+
+`-S` and `--run` are opposites and **the last one wins** on the command line:
+
+```shell
+> ceresc main.c --emit-ir
+> ceresc main.c --run -S        # neutralizes a habitual --run: stops at .casm
+```
+
+## Cleanup after running
+
+| Option | What it leaves |
+|---|---|
+| `--clean` | After a successful `--run`, deletes the generated `.casm`, `.decls.casm`, `.cobj` and `.cres` |
+| `--clean-keep-casm` | Same but **keeps** the generated `.casm` |
+
+Both require `--run` and only delete when the program exits with status 0. They never delete
+files you supplied.
+
+```shell
+> ceresc main.c … --run --clean
+```
+
+## Separate compilation
+
+| Option | What it does |
+|---|---|
+| `--decls <f.casm>` | Declarations of a prebuilt `.cobj`/`.car`; every generated unit imports it (repeatable) |
+| `--emit-decls <f.casm>` | Writes the declarations of **what this build defines** |
+
+```shell
+# build a library
+> ceresc lib.c --emit-decls lib.decls.casm -o lib.casm
+> ceres asm -c lib.casm -o lib.cobj
+> ceres ar lib.car lib.cobj
+# use it
+> ceresc main.c lib.car --decls lib.decls.casm --run
+```
+
+When there is more than one unit, or prebuilt code, a `<program>.decls.casm` is generated
+automatically as well.
+
+## Finding `ceres` and controlling the run
+
+| Option | What it does |
+|---|---|
+| `--ceres-path <dir\|file>` | Where `ceres` is (else `CERES_PATH`, else `PATH`) |
+| `--run-arg <arg>` | One more argument for `ceres run` (repeatable) |
+| `--symtab` | Links the symbol table (`ceres link --symtab`) |
+| `-- <args>` | The **program's** arguments (requires `--run`) |
+
+```shell
+> ceresc main.c --run --ceres-path ../CeresASM/Ceres/build/gcc/bin/Release
+> ceresc main.c … --run --run-arg --port --run-arg 0=stick.img
+> ceresc main.c … --run --symtab
+> ceresc main.c … --run -- -v level1
+```
+
+<Callout type="warn" title="A wrong `--ceres-path` is a hard error">
+If you point at a path that holds no `ceres`, the build fails; it does **not** fall back to
+`PATH`. That is deliberate: a stale `CERES_PATH` must not silently run a different binary.
+</Callout>
+
+## Warnings and optimization
+
+| Option | What it does |
+|---|---|
+| `-Werror` | Warnings as errors (a `#pragma warning` wins both ways) |
+| `-O0` | Everything off |
+| `-O1` | Everything except *inlining* (**default**) |
+| `-O2` / `-O3` | Everything + *inlining* (`-O3` = `-O2`) |
+| `-Os` | Like `-O1` without inlining or jump tables |
+| `-Og` | Like `-O1` without inlining, slot reuse, tail calls, IV-SR or loop idioms |
+| `-f<opt>` / `-fno-<opt>` | Enable/disable one pass (applied in order) |
+| `-fsoft-double` | `double` becomes a real 64-bit IEEE binary64 in software |
+| `--stats` / `-fstats` | Optimizer report (on stderr) |
+
+The 28 individually switchable passes:
+
+| Group | `-f` options |
+|---|---|
+| IR | `const-fold`, `algebraic`, `branch-simplify`, `dce`, `unreachable-blocks`, `jump-threading`, `inline`, `local-slot-reuse`, `copy-propagation`, `load-forwarding`, `dead-stores`, `unused-functions`, `jump-tables`, `strength-reduction`, `cse`, `block-layout`, `tail-calls`, `min-max`, `sccp`, `loop-invariant`, `induction-vars`, `loop-idioms` |
+| Codegen | `frameless-leaf`, `regalloc`, `cmp-branch-fusion`, `immediates`, `fallthrough`, `address-folding` |
+
+```shell
+> ceresc main.c -O2 -fno-inline           # everything but inlining
+> ceresc main.c -O0 -fconst-fold          # only constant folding
+> ceresc main.c -fno-frameless-leaf -fno-local-slot-reuse
+> ceresc main.c -fno-const-fold -O2       # -O2 after wins: const-fold is back ON
+```
+
+## Questions and information
+
+| Option | Output |
+|---|---|
+| `--version` | `ceresc 0.1.0` (needs no input; exits 0) |
+| `--help`, `-h` | Usage (exits **0**; no arguments too) |
+
+## Generated artifacts
+
+| Artifact | Rule |
+|---|---|
+| `.casm` | One `.c` and no `--run` with `-o` → that name; otherwise `<source>.casm` next to the source |
+| `.decls.casm` | Only when there is more than one unit or prebuilt code |
+| `.cobj` | One per `.casm` (cannot overwrite a `.cobj` you supplied) |
+| `.cres` | The `-o` (extension forced to `.cres`), or the first of the `.casm` files |
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Success (or `--help`/`--version`/no arguments); or the program under `--run` exited 0 |
+| 1 | Malformed command line, unreadable input, or any phase with an error |
+| other | Passed straight through from the corresponding `ceres` under `--run` |
+
+<Quiz question="Which optimization level is used if you give no -O?"
+  options="-O0|-O1|-O2|-Os"
+  answer="1"
+  explain="The default is -O1: every optimization except inlining."></Quiz>

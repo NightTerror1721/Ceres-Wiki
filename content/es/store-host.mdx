@@ -1,0 +1,114 @@
+# Ficheros del anfitrión
+
+A veces no quieres un disco virtual: quieres leer y escribir ficheros **de tu ordenador**
+(assets, configuración, logs). Eso es *semihosting*: el programa pide al anfitrión, y el
+anfitrión lo hace.
+
+## Cómo se activa
+
+Arranca la máquina con `--host-dir`:
+
+```shell
+> ceres run prog.cres --host-dir ./datos
+```
+
+Sin `--host-dir`, el dispositivo existe pero **toda operación devuelve `-ENODEV`**, y el
+programa sigue funcionando.
+
+## Con `fopen` y el prefijo `host:`
+
+```c
+#include "stdio.h"
+
+FILE* f = fopen("host:config.txt", "w");
+fprintf(f, "sonido=on\n");
+fclose(f);
+
+FILE* r = fopen("host:config.txt", "r");
+char linea[64];
+while (fgets(linea, sizeof linea, r)) printf("%s", linea);
+fclose(r);
+```
+
+`freopen("host:log.txt", "a", stdout)` redirige la salida estándar a un fichero del
+anfitrión. `term:` la devuelve al terminal.
+
+## Con la API directa
+
+```c
+#include "ceres/hostfs.h"
+
+int h = host_open("niveles/1.txt", HOST_READ);
+if (h >= 0)
+{
+    char buf[256];
+    int n = host_read(h, buf, sizeof buf);
+    host_close(h);
+}
+```
+
+| Función | Notas |
+|---|---|
+| `host_open(path, flags)` | El handle es 0..7 (máximo 8 abiertos) |
+| `host_read` / `host_write` | Devuelven bytes |
+| `host_seek(h, off, whence)` | 0=SET, 1=CUR, 2=END |
+| `host_size(h)` / `host_stat(path)` | Tamaño |
+| `host_remove` / `host_rename` / `host_mkdir` | Gestión |
+| `host_list(dir, i, name, size)` | Entrada i-ésima, ordenada; los directorios acaban en `/` |
+| `host_available()` | 1 si hay directorio del anfitrión |
+
+Todas devuelven `0` o más al ir bien, y **menos un errno** (`-ENOENT`, `-EEXIST`,
+`-ENOTEMPTY`, `-EMFILE`…) al fallar.
+
+## Listar un directorio
+
+```c
+char nombre[128];
+for (unsigned int i = 0; ; i++)
+{
+    int n = host_list("", i, nombre, sizeof nombre);   // "" = raiz del host-dir
+    if (n <= 0) break;
+    printf("%s\n", nombre);
+}
+```
+
+## Seguridad: es una jaula
+
+Las rutas son **relativas** dentro de `<dir>`. Un componente vacío, `.` o `..`, o que
+contenga `:` (unidad o raíz), se rechaza con `-EINVAL`. No se puede escapar del directorio
+ni siquiera con enlaces simbólicos.
+
+<Callout type="info" title="¿Disco, host o periférico?">
+| Quieres… | Usa |
+|---|---|
+| Datos que sobrevivan, portables en un `.img` | CeresFS (`disk`) |
+| Leer assets que ya tienes en el PC al desarrollar | `host:` |
+| Simular un cartucho o memoria USB | Puertos periféricos |
+</Callout>
+
+## Un ejemplo: cargar un nivel desde el host
+
+```c title="cargar.c"
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    FILE* f = fopen("host:niveles/nivel1.txt", "r");
+    if (!f) { perror("host:niveles/nivel1.txt"); return 1; }
+
+    char linea[128];
+    int filas = 0;
+    while (fgets(linea, sizeof linea, f))
+    {
+        printf("%2d | %s", ++filas, linea);
+    }
+    fclose(f);
+    return 0;
+}
+```
+
+<Quiz question="¿Qué hace host_list con una entrada que es un directorio?"
+  options="La omite|Devuelve su nombre terminado en /|Devuelve -EISDIR|La lista como fichero"
+  answer="1"
+  explain="Las entradas van ordenadas por nombre y los directorios acaban en '/' para que los distingas."></Quiz>

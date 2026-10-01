@@ -1,0 +1,110 @@
+# Randomness and hashing
+
+## Random numbers
+
+`stdlib.h` brings the classic `rand()` (a small LCG). For quality and explicit state,
+`ceres/rand.h` offers **xorshift128**, seeded through splitmix32.
+
+```c
+#include "ceres/rand.h"
+
+struct rng r;
+rng_seed(&r, 2026);              // reproducible
+rng_seed_entropy(&r);            // from the clock (different every time)
+
+unsigned int u  = rng_u32(&r);
+int          n  = rng_range(&r, 1, 6);      // 1..6, unbiased
+float        f  = rng_float(&r);            // [0, 1)
+int          si = rng_chance(&r, 30);       // 1 with 30% probability
+rng_shuffle(&r, cards, 52, sizeof cards[0]);   // Fisher-Yates
+```
+
+And a global generator for when you do not care which one you get:
+
+```c
+rand_seed(7);
+int x = rand_range(0, 99);
+```
+
+<Callout type="tip" title="Total determinism">
+The `struct rng` keeps its own state, so two objects with the same seed produce the same
+sequence. Perfect for tests and for reproducible games: save the seed and you can replay
+the exact game.
+</Callout>
+
+## Hash functions and checksums
+
+`ceres/hash.h`, all in 32-bit arithmetic. None of them is cryptographic.
+
+```c
+#include "ceres/hash.h"
+
+unsigned int h1 = hash_fnv1a(data, len);       // FNV-1a
+unsigned int h2 = hash_djb2("string");         // strings
+unsigned int h3 = hash_murmur3(data, len, 0);  // MurmurHash3 x86-32
+unsigned int h4 = hash_crc32(data, len);       // CRC-32 IEEE
+unsigned int h5 = hash_adler32(data, len);     // Adler-32
+```
+
+The CRC can be computed piecewise (useful for large files):
+
+```c
+unsigned int crc = 0;
+while (fread(buf, 1, sizeof buf, f) > 0)
+    crc = hash_crc32_update(crc, buf, n);
+/* crc == hash_crc32 of all of it together */
+```
+
+Reference values to check your implementation:
+
+| Input | Result |
+|---|---|
+| `hash_fnv1a("")` | `0x811C9DC5` |
+| `hash_crc32("123456789")` | `0xCBF43926` |
+| `hash_adler32("Wikipedia")` | `0x11E60398` |
+
+## What each one is for
+
+| Need | Function |
+|---|---|
+| Hash table (integer/string keys) | `hash_fnv1a` / `hash_djb2` |
+| High-quality uniform distribution | `hash_murmur3` |
+| Verify data integrity | `hash_crc32` |
+| Fast non-cryptographic comparison | `hash_adler32` |
+
+<Callout type="info" title="The library's maps already hash">
+`ceres/ds/hashmap.h`, `gmap.h`, `hset.h` and `lru.h` use these hashes internally. You only
+need to write your own hash function if the key is a type of your own.
+</Callout>
+
+## Example: generating a world
+
+```c
+#include "ceres/rand.h"
+
+static struct rng world;
+
+void generate_world(unsigned int seed)
+{
+    rng_seed(&world, seed);
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 64; x++)
+            map[y][x] = rng_chance(&world, 15) ? TREE : GRASS;
+}
+```
+
+## Example: shuffle and deal
+
+```c
+int deck[52];
+for (int i = 0; i < 52; i++) deck[i] = i;
+rng_shuffle(&r, deck, 52, sizeof deck[0]);
+
+int hand[5];
+for (int i = 0; i < 5; i++) hand[i] = deck[i];
+```
+
+<Quiz question="Which function returns an integer between lo and hi, both included, without bias?"
+  options="rand()|rng_u32() % (hi-lo+1)|rng_range(&r, lo, hi)|rng_float(&r)"
+  answer="2"
+  explain="rng_range spreads the 32-bit range without the modulo bias and swaps them if lo > hi."></Quiz>

@@ -1,0 +1,141 @@
+# El bucle de juego
+
+Un juego es, en esencia, un bucle: **leer entrada → actualizar → dibujar → esperar al
+siguiente fotograma**. `ceres/game.h` te da ese esqueleto con dos formas de medir el tiempo.
+
+## El esqueleto
+
+```c
+#include "ceres/game.h"
+
+struct game g;
+game_init(&g, 200000);          // un fotograma = 200000 instrucciones
+
+while (g.running)
+{
+    game_frame_begin(&g);       // input_update() y la marca de inicio
+
+    actualizar(&g);
+    dibujar();
+
+    game_frame_end(&g);         // espera lo que queda del fotograma
+}
+```
+
+O con funciones:
+
+```c
+game_run(&g, actualizar, dibujar, &estado);
+```
+
+`game_quit(&g)` pone `g.running` a 0.
+
+## Dos formas de medir el tiempo
+
+Ceres no usa un reloj fijo: tú eliges.
+
+<Tabs>
+  <Tab label="Presupuesto de instrucciones">
+El modo por defecto. Un fotograma es un número de **ticks** (instrucciones) y se espera con
+un giro sobre `timer_ticks()`.
+
+```c
+game_init(&g, 200000);          // 200k instrucciones por fotograma
+/* game_frame_end gira hasta agotar el presupuesto */
+```
+
+Es **determinista**: el mismo programa hace exactamente lo mismo en cada ejecución. Es lo
+que quieren los tests y las partidas reproducibles, y lo que permite depurar hacia atrás.
+`game_over_budget(&g)` te dice si el último fotograma se pasó.
+  </Tab>
+  <Tab label="Tiempo real (durmiendo)">
+Para un juego que debe correr a velocidad estable en un reloj real. El fotograma dura `ms`
+milisegundos desde su inicio; su propio trabajo cuenta, y un fotograma tardío no se
+compensa.
+
+```c
+game_init(&g, 0);
+game_pace_ms(&g, 16);           // ~60 FPS, durmiendo con la alarma (no gasta CPU)
+```
+
+No necesita manejador de interrupciones.
+  </Tab>
+  <Tab label="Tiempo real (girando)">
+Igual que el anterior pero **girando** sobre el reloj de nanosegundos, sin dormir. No
+necesita el módulo `irq`; mantiene el anfitrión ocupado y el fotograma termina al paso del
+reloj, no al del sueño.
+
+```c
+game_init(&g, 0);
+game_pace_real(&g, 16);
+```
+  </Tab>
+</Tabs>
+
+<Callout type="info" title="Qué usar en cada caso">
+| Quieres… | Usa |
+|---|---|
+| Tests reproducibles, física idéntica | presupuesto de instrucciones |
+| Juego a 60 FPS, portátil, poca CPU | `game_pace_ms` |
+| Juego a 60 FPS sin depender del módulo irq | `game_pace_real` |
+</Callout>
+
+## El orden importa
+
+```
+game_frame_begin()   → drena teclado/ratón/gamepad y calcula los bordes ("acaba de pulsarse")
+   actualizar()      → usa key_pressed/key_down, mueve cosas
+   dibujar()         → gfx_clear, pinta, gfx_present
+game_frame_end()     → espera al siguiente fotograma
+```
+
+Un patrón fiable es una **máquina de estados** dentro de `actualizar`: `TITULO`, `JUEGO`,
+`PAUSA`, `GAMEOVER`.
+
+```c
+enum estado { TITULO, JUEGO, PAUSA, GAMEOVER };
+
+static void actualizar(struct game* g, struct estado_juego* s)
+{
+    switch (s->fase)
+    {
+    case TITULO:
+        if (key_pressed(KEY_ENTER)) s->fase = JUEGO;
+        break;
+    case JUEGO:
+        if (key_pressed(KEY_ESCAPE)) s->fase = PAUSA;
+        mover(s);
+        break;
+    case PAUSA:
+        if (key_pressed(KEY_ESCAPE)) s->fase = JUEGO;
+        break;
+    case GAMEOVER:
+        if (key_pressed(KEY_ENTER)) reiniciar(s);
+        break;
+    }
+}
+```
+
+## Física con paso fijo
+
+Aunque tu fotograma no sea determinista, puedes hacer la **física** determinista
+actualizando en pasos fijos de ticks. Un acumulador clásico:
+
+```c
+s->acumulador += ticks_transcurridos;
+while (s->acumulador >= PASO) {
+    paso_fisica(s);
+    s->acumulador -= PASO;
+}
+```
+
+<Callout type="tip" title="Empieza por el presupuesto de instrucciones">
+Durante el desarrollo usa `game_init(&g, N)`. Tu juego será reproducible, los tests
+compararán salidas y podrás rebobinar con el depurador. Cuando esté listo, cambia a
+`game_pace_ms` para jugar cómodo.
+</Callout>
+
+<Quiz question="¿Qué modo hace que el mismo programa haga exactamente lo mismo en cada ejecución?"
+  options="game_pace_ms|game_pace_real|Un presupuesto de instrucciones (game_init con ticks)|El reloj de pared"
+  answer="2"
+  explain="El contador de ticks es el numero de instrucciones, deterministico; los modos reales dependen del anfitrion."></Quiz>

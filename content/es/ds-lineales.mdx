@@ -1,0 +1,115 @@
+# Vectores, listas y colas
+
+La librería trae unas veinte estructuras de datos. Esta página cubre las **lineales**.
+Todas caben en `ceres/ds/`. Si no estás seguro de cuál usar, empieza por `vector`.
+
+## `vector` — array que crece
+
+```c
+#include "ceres/ds/vector.h"
+
+struct vector v;
+vector_init(&v, sizeof(int));
+
+int* slot = (int*)vector_push(&v);   // añade un elemento a cero y lo devuelve
+*slot = 7;
+
+int x = 3;
+vector_push_copy(&v, &x);            // añade una copia
+printf("%d\n", VECTOR_GET(&v, int, 0));   // 7
+vector_free(&v);
+```
+
+`vector_at`/`vector_push` dan un puntero **válido hasta el siguiente push/insert/reserve**
+(al crecer puede moverse la memoria). Ordena con `vector_sort` (qsort) o
+`vector_sort_stable`.
+
+## `deque` — doble extremo
+
+Crece por los dos lados en O(1) y da acceso aleatorio:
+
+```c
+#include "ceres/ds/deque.h"
+
+struct deque q;  dq_init(&q, sizeof(int));
+int v = 3;
+dq_push_back(&q, &v);  dq_push_front(&q, &v);
+int out;  dq_pop_front(&q, &out);
+int primero = DEQUE_GET(&q, int, 0);
+dq_free(&q);
+```
+
+## `stack` — LIFO
+
+```c
+#include "ceres/ds/stack.h"
+struct stack s;  stack_init(&s, sizeof(int));
+int v = 5;  stack_push(&s, &v);
+int out;    stack_pop(&s, &out);
+```
+
+## Listas enlazadas intrusivas
+
+El nodo vive **dentro** de tu objeto: sin reservas, y un objeto puede estar en varias
+listas a la vez.
+
+```c
+#include "ceres/ds/list.h"
+
+struct trabajo { int id; struct list_node link; };
+struct list cola;  list_init(&cola);
+
+struct trabajo t = { 1 };  list_node_init(&t.link);
+list_push_back(&cola, &t.link);
+
+struct list_node* it;
+LIST_FOR_EACH(it, &cola)
+{
+    struct trabajo* j = list_entry(it, struct trabajo, link);
+    printf("%d\n", j->id);
+}
+```
+
+`LIST_FOR_EACH_SAFE` permite quitar el nodo actual dentro del bucle. `slist.h` es la
+versión de un solo puntero (para pilas y listas libres).
+
+## Colas circulares (para interrupciones)
+
+`ringbuf.h` (bytes) y `cqueue.h` (elementos de tamaño fijo) son seguros para **un productor
+y un consumidor** sin enmascarar interrupciones: cada índice tiene un solo escritor.
+
+```c
+#include "ceres/ds/cqueue.h"
+
+static unsigned char almacen[16 * sizeof(int)];
+struct cqueue q;
+cq_init(&q, almacen, sizeof(int), 16);    // capacidad redondeada a potencia de 2
+
+int evento = 42;
+cq_put(&q, &evento);        // desde el productor (una interrupcion)
+int leido;
+cq_get(&q, &leido);         // desde el consumidor (el bucle principal)
+```
+
+```c
+#include "ceres/ds/ringbuf.h"
+unsigned char buf[256];
+struct ringbuf r;  ring_init(&r, buf, sizeof buf);
+ring_put(&r, 'A');
+int c = ring_get(&r);
+```
+
+<Callout type="tip" title="Regla rápida">
+| Necesito… | Estructura |
+|---|---|
+| Un array que crezca | `vector` |
+| Meter/sacar por ambos extremos | `deque` |
+| LIFO | `stack` |
+| Objeto en varias listas | `list` / `slist` |
+| Pasar datos de una ISR al bucle | `ringbuf` / `cqueue` |
+</Callout>
+
+<Quiz question="¿Qué estructura es segura entre una interrupción y el bucle sin enmascarar IRQ?"
+  options="vector|list|cqueue (un productor, un consumidor)|hashmap"
+  answer="2"
+  explain="En cqueue y ringbuf cada indice tiene un solo escritor, asi que no necesitan mascara."></Quiz>

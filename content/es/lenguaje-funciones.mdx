@@ -1,0 +1,144 @@
+# Funciones, punteros y structs
+
+## Funciones
+
+```c
+int suma(int a, int b) { return a + b; }
+
+void saludar(const char* quien)
+{
+    printf("Hola, %s\n", quien);
+}
+```
+
+Los argumentos llegan por convenio en **`r0`–`r3`** (enteros/punteros) y **`f0`–`f3`**
+(flotantes), contados por separado; el resto van a la pila. El valor de retorno vuelve en
+`r0` (o `f0`). Tú nunca escribes esto: lo hace el compilador, pero conviene saberlo cuando
+escribas ensamblador.
+
+| Hasta 4 enteros | `r0 r1 r2 r3` |
+| Resto | pila del llamador, `[sp]` hacia arriba |
+| Hasta 4 floats | `f0 f1 f2 f3` |
+| Retorno entero | `r0` |
+| Retorno float | `f0` |
+| `long long` de retorno | `r0`/`r1` (par de palabras) |
+
+## Recursión
+
+La recursión funciona, y **no hay límite impuesto por el compilador**: si te pasas,
+recibes un `StackOverflow` de la máquina (que es mucho mejor que corromper memoria).
+
+```c
+int fib(int n) { return n < 2 ? n : fib(n - 1) + fib(n - 2); }
+```
+
+<Callout type="warn" title="La pila es finita">
+El heap no puede crecer hasta la pila: `malloc` sube el límite de pila al crecer. Si una
+recursión baja demasiado, la máquina falla con `StackOverflow` (interrupción 5) en lugar
+de pisar tus datos. Para recursiones profundas, mide con `dbg_stack_used()`.
+</Callout>
+
+## Punteros a función
+
+Son la base de las callbacks, los estados de un juego y las tablas de comportamiento.
+
+```c
+int sumar(int a, int b) { return a + b; }
+int restar(int a, int b) { return a - b; }
+
+int (*op)(int, int) = sumar;
+printf("%d\n", op(3, 4));    // 7
+op = restar;
+printf("%d\n", op(3, 4));    // -1
+```
+
+<Callout type="info" title="Se usan por todas partes">
+`qsort` recibe un comparador, el bucle de juego recibe `update` y `draw`, y las tablas de
+estado de un motor de juego son arrays de punteros a función. Ceres-C los soporta
+enteros, incluso como **inicializadores estáticos**.
+</Callout>
+
+## Structs por valor
+
+```c
+struct punto { int x, y; };
+
+struct punto mover(struct punto p, int dx, int dy)
+{
+    p.x += dx;
+    p.y += dy;
+    return p;                 // devuelve una copia
+}
+
+struct punto a = { 2, 3 };
+a = mover(a, 1, 1);           // a = {3, 4}
+```
+
+## Tipos de datos compuestos
+
+```c
+struct entidad
+{
+    int x, y;
+    int vidas;
+    const char* nombre;
+    void (*update)(struct entidad*);
+};
+
+struct entidad heroe = { .x = 4, .y = 2, .vidas = 3, .nombre = "Ana" };
+```
+
+Los **inicializadores designados** son de C99 y el compilador los acepta; además acepta
+**compound literals** `(struct punto){1, 2}`.
+
+## Pasar arrays
+
+Los arrays decaen a punteros:
+
+```c
+void rellenar(int* v, int n, int valor)
+{
+    for (int i = 0; i < n; i++) v[i] = valor;
+}
+
+int datos[10];
+rellenar(datos, 10, 7);
+```
+
+## Variables estáticas y alcance
+
+```c
+static int contador;          // una sola copia, invisible fuera de este archivo
+static int siguiente(void) { return ++contador; }
+```
+
+`static` dentro de una función da persistencia; a nivel de archivo, enlace interno.
+
+## Devolver varias cosas
+
+No hay tuplas: usa un struct.
+
+```c
+struct par { int min, max; };
+
+struct par rango(const int* v, int n)
+{
+    struct par r = { v[0], v[0] };
+    for (int i = 1; i < n; i++)
+    {
+        if (v[i] < r.min) r.min = v[i];
+        if (v[i] > r.max) r.max = v[i];
+    }
+    return r;
+}
+```
+
+<Callout type="tip" title="Estructuras con \"punteros vivos\"">
+Un asador de la librería que te ahorrará punteros a `struct`: `ceres/ds/vecmath.h` pasa
+`vec2`/`vec3` **por valor** y devuelve structs. Perfecto para posiciones y velocidades.
+</Callout>
+
+<Quiz question="¿Por qué registro viajan los dos primeros enteros de una función?"
+  options="Por la pila|Por r0 y r1|Por f0 y f1|Por la zona global"
+  answer="1"
+  explain="Los cuatro primeros enteros van en r0-r3 y los cuatro primeros floats en f0-f3."></Quiz>

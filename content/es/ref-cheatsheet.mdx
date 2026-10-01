@@ -1,0 +1,158 @@
+# Chuletario
+
+Toda la API en una página. Cabeceras de C estándar y módulos de `ceres/`.
+
+## Arranque
+
+| Quiero… | Usa | Página |
+|---|---|---|
+| Compilar y ejecutar | `ceresc prog.c libceres.car --decls … -I include -O2 --run` | Instalar |
+| Pedir un módulo opcional | `// USE: irq` / `// USE: fault` / `// USE: mmu` | Instalar |
+| `double` de 64 bits | `--soft-double` | El double de software |
+| Debug con nombres | `--symtab` | Backtrace |
+
+## Consola
+
+| Función | Nota |
+|---|---|
+| `puts/putstr/putchar` | Escribir |
+| `printf/sprintf/snprintf` | Formato: `%d %u %o %x %X %b %c %s %p %f %e %g %a %n %%` |
+| `getchar/getchar_nb` | Leer (con/sin bloqueo) |
+| `scanf/sscanf/fscanf` | Entrada con formato |
+| `line_read/line_prompt` | Una línea completa |
+| `read_int/read_float/read_yes_no/read_choice` | Entrada guiada |
+| `ansi_goto/ansi_fg/ansi_bg/ansi_clear` | Color y cursor |
+| `fopen/fclose/fread/fwrite/fgets/getline` | Streams (disco, `host:`, memoria) |
+
+## Memoria
+
+| Función | Nota |
+|---|---|
+| `malloc/calloc/realloc/free` | Heap TLSF, O(1) |
+| `aligned_alloc/posix_memalign` | Alineado |
+| `heap_stats/heap_check/heap_dump` | Diagnóstico |
+| `arena_init/arena_alloc/arena_release` | Memoria de una sola vida |
+| `pool_init/pool_alloc/pool_free` | Bloques de tamaño fijo |
+
+## Cadenas
+
+`memcpy memmove memset memcmp memchr strlen` · `strcpy strncpy strcat strcmp strchr strrchr strstr strtok strerror` ·
+`strdup strndup strlcpy strlcat strsep memmem strcasecmp` · `atoi atoll strtof strtoll` · `qsort bsearch sort_stable`
+
+## Matemáticas
+
+`fabs sqrt floor ceil trunc round fmin fmax copysign fma rcp rsqrt` (1 instrucción) ·
+`sin cos tan asin acos atan atan2 exp log log2 log10 pow` ·
+`sinh cosh tanh cbrt hypot ldexp frexp modf fmod remainder` ·
+`erf erfc tgamma lgamma ilogb logb nextafter` · `isnan isinf isfinite signbit fpclassify`
+
+## Tiempo
+
+| Función | Nota |
+|---|---|
+| `timer_ticks/timer_ticks64` | Instrucciones (**determinista**) |
+| `timer_nanos64` | Nanosegundos reales |
+| `timer_wait_ms/us/ns` | Duermen (alarma) |
+| `timer_after/timer_every/timer_poll` | Temporizadores software |
+| `time/gmtime/mktime/strftime` | Calendario (`time_t` de 64 bits) |
+| `sleep/nanosleep` | Espera real |
+
+## Azar y hash
+
+`rng_seed rng_u32 rng_range rng_float rng_chance rng_shuffle` ·
+`hash_fnv1a hash_djb2 hash_murmur3 hash_crc32 hash_adler32`
+
+## Unicode
+
+`utf8_decode utf8_encode utf8_next utf8_length utf8_valid utf8_to_latin1 latin1_to_utf8` ·
+`mbrtowc wcrtomb mbsrtowcs wcsrtombs wcslen wcscmp` · `mbrtoc32 c32rtomb`
+
+## Gráficos
+
+| Área | Funciones |
+|---|---|
+| Display | `display_size clear show blit put set_mode set_palette blit8 scroll` |
+| Dibujo | `gfx_init clear pixel line rect rect_fill circle circle_fill triangle* present` |
+| Superficies | `gfx_surface_new/free set_target set_clip blit blit_key blit_scaled` |
+| Sprites | `sprite_draw/draw_flip/draw_scaled` · `anim_init/update/frame` · `tilemap_draw/at/tile` · `rect_overlap/contains` |
+| Fuente | `font_char font_char32 font_text font_printf font_text_width` |
+| Color | `RGB COL_* color_hsv color_lerp color_blend color_scale PALETTE16` |
+| Blitter | `blitter_fill/copy/copy_key/copy_scaled/copy_indexed` |
+| Texto | `fb_init clear put put_attr text printf present set_output` |
+| TUI | `tui_init window label button progress list status menu` |
+
+## Sonido
+
+`audio_play stop busy wait beep note_hz play_tune` ·
+`music_play stop update row` · `channel_set note_on note_off stop` · `sfx_play sfx_update`
+
+## Entrada
+
+`input_init/update/terminal_fallback` · `key_down/pressed/released` · `mouse_*` · `pad_*` ·
+`key_start/get/wait/stop` (`KEYC_*`)
+
+## Almacenamiento
+
+| API | Nota |
+|---|---|
+| `fs_format/mount/sync` | CeresFS |
+| `fs_open/close/read/write/seek` | Por descriptor |
+| `fs_mkdir/opendir/readdir` | Directorios |
+| `fs_mount_port/mount_device` | Varios volúmenes (`stick0:/…`) |
+| `host_*`, `fopen("host:…")` | Ficheros del anfitrión |
+| `periph_present/read/write/next_event` | Memorias y cartuchos |
+| `blockdev_disk/blockdev_port` | Dispositivos de bloques |
+
+## Datos y recursos
+
+`json_parse/find/index/get_*/json_writer_*` · `ini_parse/load/get_*/set_*/save` ·
+`save_write/read/load` · `pack_open/read/load/image` · `image_load/decode/encode` ·
+`lz4_compress/decompress/frame_decompress`
+
+## Sistema
+
+| Área | Funciones |
+|---|---|
+| Interrupciones | `irq_attach/detach irq_save/restore irq_wait` · `__interrupt` + `__interrupt_vector` |
+| Fallos | `sys_install_fault_handlers sys_fault_address/access/frame` |
+| MMU | `mmu_space_init map unmap protect activate on_fault guard_task_stacks` |
+| Tareas | `task_spawn/yield/sleep/join/exit` · `chan_init/send/recv/close` |
+| Backtrace | `backtrace backtrace_symbol backtrace_print` |
+| Args/entorno | `sys_argc/argv/envp` · `getenv/setenv/unsetenv` |
+| Juego | `game_init/frame_begin/end/run/quit pace_ms/pace_real` |
+
+## Estructuras de datos (`ceres/ds/`)
+
+| Necesito… | Estructura |
+|---|---|
+| Array creciente | `vector` |
+| Ambos extremos | `deque` |
+| LIFO / FIFO | `stack` / `pqueue` |
+| Lista intrusiva | `list` / `slist` |
+| ISR → bucle | `ringbuf` / `cqueue` |
+| Clave→valor hash | `hashmap` / `gmap` |
+| Ordenado | `omap` / `oset` / `rbtree` / `skiplist` |
+| Tabla estática | `flatmap` / `flatset` |
+| Múltiples valores | `multimap` |
+| Caché | `lru` |
+| Handles estables | `slotmap` |
+| Prefijos | `trie` |
+| Grupos | `dsu` |
+| Bits / pertenencia | `bitset` / `bloom` |
+| Cadena creciente | `strbuf` |
+
+## Constantes útiles
+
+| Constante | Valor |
+|---|---|
+| `INT_MAX` / `UINT_MAX` | `2147483647` / `4294967295u` |
+| `LLONG_MAX` | `9223372036854775807LL` |
+| `MB_CUR_MAX` | `4` |
+| `FOPEN_MAX` | `8` |
+| `FS_NAME_MAX` | `47` |
+| `IMAGE_MAX_SIDE` | `8192` |
+| `TASK_MAX` | `16` |
+| `MMU_PAGE` | `4096` |
+| `CERES_SYSTEM_STACK` | `4096` |
+| `DISP_MAX_WIDTH/HEIGHT` | `1280` / `720` |
+| `FB_MAX_COLS/ROWS` | `200` / `100` |

@@ -1,0 +1,111 @@
+# Hola, mundo
+
+El programa más pequeño que hace algo útil. Escribe esto en `hello.c`:
+
+```c title="hello.c"
+#include "stdio.h"
+
+int main(void)
+{
+    puts("hello, ceres");
+    return 0;
+}
+```
+
+## Compilarlo y ejecutarlo
+
+```shell
+> ceresc hello.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+<Output title="Salida">
+hello, ceres
+</Output>
+
+## Qué acaba de pasar
+
+1. **`ceresc`** leyó `hello.c`, lo convirtió a **CASM** y lo ensambló a un objeto.
+2. Enlazó tu objeto con el **archivo de la librería**: `puts` vino de `stdio`.
+3. Escribió un programa `.cres` y lo lanzó en la máquina virtual con `--run`.
+4. `main` devolvió **0**, que es el estado de salida del proceso.
+
+## Línea a línea
+
+```c
+#include "stdio.h"      // declara puts, printf, y los streams
+int main(void)          // el punto de entrada; entre 0 y 255 es el estado de salida
+{
+    puts("hello, ceres");   // escribe la cadena y un '\n'
+    return 0;               // 0 = éxito
+}
+```
+
+<Callout type="info" title="return de main == exit()">
+En Ceres, `return n` desde `main` equivale a `exit(n)`: se ejecutan los manejadores de
+`atexit` y se vuelcan los ficheros abiertos. La máquina también expone `sys_exit()` y
+`sys_exit_status(n)` para parar desde cualquier punto.
+</Callout>
+
+## Un poco más: números y formato
+
+```c title="hola2.c"
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    puts("hello, ceres");
+
+    int answer = 6 * 7;
+    printf("la respuesta es %d (0x%X, binario %b)\n", answer, answer, answer);
+    printf("pi es aproximadamente %.4f\n", 3.14159265f);
+
+    char text[32];
+    printf("en hexadecimal: [%s]\n", itoa(answer, text, 16));
+    return 0;
+}
+```
+
+<Output>
+hello, ceres
+la respuesta es 42 (0x2A, binario 101010)
+pi es aproximadamente 3.1416
+en hexadecimal: [2a]
+</Output>
+
+Observa el modificador **`%b`**: la salida binaria es una extensión de Ceres. Y `%X`
+imprime en mayúsculas sin el prefijo `0x`.
+
+## Un poco más todavía: entrada
+
+```c title="saludo.c"
+#include "stdio.h"
+#include "ceres/line.h"
+
+int main(void)
+{
+    char name[64];
+    if (line_prompt("¿Cómo te llamas? ", name, sizeof name) < 0)
+    {
+        puts("no hay entrada");
+        return 1;
+    }
+    printf("Hola, %s. ¡Bienvenido a Ceres!\n", name);
+    return 0;
+}
+```
+
+<Output title="Sesión">
+¿Cómo te llamas? Ana
+Hola, Ana. ¡Bienvenido a Ceres!
+</Output>
+
+<Callout type="tip" title="Los ficheros no se llaman .c por capricho">
+La librería usa las cabeceras estándar (`stdio.h`, `stdlib.h`, …) y las de Ceres
+(`ceres/line.h`, `ceres/gfx.h`, …). Todas se buscan con `-I include`.
+</Callout>
+
+<Quiz question="¿Qué imprime printf(&quot;%b&quot;, 5)?"
+  options="5|0b101|101|%b"
+  answer="2"
+  explain="%b es el binario que añade Ceres: imprime los bits sin prefijo, por eso 5 es 101."></Quiz>

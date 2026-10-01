@@ -1,0 +1,123 @@
+# Tasks and channels
+
+`ceres/task.h` gives **cooperative coroutines**: functions that run on their own stack and
+hand over control. There is no preemption: between two calls that yield, a task has the
+machine to itself, so it needs no locks.
+
+## Spawning tasks
+
+```c
+#include "ceres/task.h"
+
+static void blink(void* arg)
+{
+    (void)arg;
+    for (;;) { led ^= 1; task_sleep_ms(500); }
+}
+
+int id = task_spawn(blink, NULL, 0);    // 0 = default stack size (8 KiB)
+for (;;) { update(); task_yield(); }
+```
+
+| Function | Notes |
+|---|---|
+| `task_spawn(fn, arg, stack_size)` | Returns id > 0, or `-1` (`EAGAIN`/`ENOMEM`) |
+| `task_yield()` | Let the others that can run have a turn |
+| `task_sleep_ms(ms)` / `task_sleep_ns(ns)` | Sleep real time |
+| `task_join(id)` | Wait for it to finish (`0`, `ESRCH`, `EDEADLK`) |
+| `task_exit()` | End this task (not `main`) |
+| `task_self()` | The current task's id; **0 for `main`** |
+| `task_count()` / `task_alive(id)` | Query |
+
+`main()` is task 0. `TASK_MAX` tasks at once (16 by default, configurable).
+
+<Callout type="tip" title="When every task is asleep, the machine rest">
+The scheduler is round-robin. If every task is asleep, the machine `halt`s until the first
+one is due (with the timer's alarm): it does **not** spin. And if every task waits for
+something no one can give, `task_join`/`chan_recv` return `EDEADLK` instead of hanging.
+</Callout>
+
+## Channels: messages between tasks
+
+A channel is a queue of fixed-size messages. `send` waits if it is full and `recv` waits if
+it is empty, letting the others run.
+
+```c
+static struct chan orders;
+
+static void producer(void* arg)
+{
+    int value;
+    for (int i = 0; i < 100; i++) { value = i; chan_send(&orders, &value); }
+    chan_close(&orders);
+}
+
+static void consumer(void* arg)
+{
+    int value;
+    while (chan_recv(&orders, &value) == 0)
+        process(value);
+}
+
+int main(void)
+{
+    chan_init(&orders, sizeof(int), 8);
+    task_spawn(producer, NULL, 0);
+    task_spawn(consumer, NULL, 0);
+    for (;;) task_yield();
+}
+```
+
+`chan_try_send`/`chan_try_recv` do not block (`EAGAIN` when full/empty). After `chan_close`,
+receivers drain what is left and then get `EPIPE`.
+
+## Safe stacks
+
+Each task gets a stack of its own from the heap. While it runs, the machine's **stack limit**
+is the bottom of that stack, so overflowing is a `StackOverflow`, not rewritten memory.
+
+With the `mmu` module you can also put a **guard page** at the bottom of each new stack:
+
+```c
+// USE: mmu
+mmu_guard_task_stacks(&space);   // every new task gets an unmapped page below it
+```
+
+It is detailed in **Virtual memory (MMU)**.
+
+## A game with logic in a task
+
+```c title="spawn.c"
+#include "stdio.h"
+#include "ceres/task.h"
+
+static volatile int frames = 0;
+
+static void clock_task(void* arg)
+{
+    (void)arg;
+    while (frames < 100) { frames++; task_sleep_ms(16); }
+}
+
+int main(void)
+{
+    task_spawn(clock_task, NULL, 0);
+    while (frames < 100)
+    {
+        /* the main logic goes on with its own work */
+        task_yield();
+    }
+    printf("100 frames\n");
+    return 0;
+}
+```
+
+<Callout type="warn" title="No task calls from an interrupt">
+A handler runs on the system stack with interrupts masked. Do not call `task_*` or `chan_*`
+from it: queue an event and let a task pick it up.
+</Callout>
+
+<Quiz question="What does task_self() return for main()?"
+  options="1|0|-1|TASK_MAX"
+  answer="1"
+  explain="main is the first task and has id 0; tasks created with task_spawn get ids greater than zero."></Quiz>

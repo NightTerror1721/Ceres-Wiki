@@ -1,0 +1,126 @@
+# Mapas y conjuntos
+
+Todas caben en `ceres/ds/`. Elige según el tipo de clave y si necesitas **orden**.
+
+## `hashmap` — `char*` → `void*`
+
+El más simple: claves de texto, valores punteros. Copia la clave; nunca toca el valor.
+
+```c
+#include "ceres/ds/hashmap.h"
+
+struct hashmap m;
+hashmap_init(&m, 16);
+hashmap_set(&m, "vidas", (void*)3);
+if (hashmap_has(&m, "vidas"))
+    printf("%d\n", (int)hashmap_get(&m, "vidas"));
+hashmap_remove(&m, "vidas");
+hashmap_free(&m);
+```
+
+## `gmap` — clave y valor de tamaño fijo (copias)
+
+Cuando la clave no es texto: enteros, structs… `key_size`/`value_size` en bytes.
+
+```c
+#include "ceres/ds/gmap.h"
+#include "ceres/ds/generic.h"
+
+struct gmap m;
+gmap_init(&m, sizeof(int), sizeof(float), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+
+int k = 3;  float v = 9.5f;
+gmap_set(&m, &k, &v);
+
+float* f = (float*)gmap_get(&m, &k);
+gmap_free(&m);
+```
+
+`generic.h` te da `DS_DEFAULT_HASH(T)`/`DS_DEFAULT_EQ(T)`/`DS_DEFAULT_CMP(T)` para
+`int`, `unsigned`, `float`, `char*` y `const char*`.
+
+## `hset` — conjunto por hash
+
+`gmap` sin valor: "¿he visto ya esta clave?".
+
+```c
+#include "ceres/ds/hset.h"
+struct hset s;
+hset_init(&s, sizeof(int), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+int k = 7;
+if (hset_add(&s, &k)) puts("nuevo");
+hset_free(&s);
+```
+
+## Mapas ordenados (árbol)
+
+`omap`/`oset` guardan en un árbol rojo-negro: recorrido **en orden** y O(log n) garantizado.
+
+```c
+#include "ceres/ds/omap.h"
+struct omap m;
+omap_init(&m, sizeof(int), sizeof(int), DS_DEFAULT_CMP(int));
+int k = 3, v = 30;
+omap_set(&m, &k, &v);
+
+for (const void* key = omap_first_key(&m); key; key = omap_next_key(&m, key))
+    printf("%d -> %d\n", *(const int*)key, *(const int*)omap_get(&m, key));
+omap_free(&m);
+```
+
+## Mapas ordenados como vector (rápidos de leer)
+
+`flatmap`/`flatset`: vector ordenado + búsqueda binaria. Mejor para tablas que se construyen
+una vez y se leen mucho.
+
+```c
+#include "ceres/ds/flatmap.h"
+struct flatmap m;
+fmap_init(&m, sizeof(int), sizeof(int), DS_DEFAULT_CMP(int));
+
+int k = 3, v = 30;
+fmap_set(&m, &k, &v);                       // O(n): la escritura es rara
+int* found = (int*)fmap_get(&m, &k);        // O(log n)
+
+/* recorrer en orden por clave */
+for (unsigned int i = 0; i < fmap_len(&m); i++)
+{
+    const int* par = (const int*)fmap_pair_at(&m, i);   // clave, valor
+}
+fmap_free(&m);
+```
+
+## Una clave → varios valores: `multimap`
+
+```c
+#include "ceres/ds/multimap.h"
+struct multimap m;
+mm_init(&m, sizeof(int), sizeof(int), 0, DS_DEFAULT_HASH(int), DS_DEFAULT_EQ(int));
+
+int k = 1, a = 10, b = 20;
+mm_add(&m, &k, &a);
+mm_add(&m, &k, &b);
+printf("%u valores\n", mm_count(&m, &k));    // 2
+```
+
+## ¿Cuál elijo?
+
+| Necesito… | Estructura |
+|---|---|
+| Texto → puntero, sin más | `hashmap` |
+| Clave de tamaño fijo | `gmap` |
+| Sólo pertenencia | `hset` |
+| Recorrer **ordenado** y muchas escrituras | `omap` / `oset` |
+| Tabla construida una vez, muchas lecturas | `flatmap` / `flatset` |
+| Varios valores por clave | `multimap` |
+
+<Callout type="info" title="Los comparadores y hashes">
+Los que reciben `hash`/`eq`/`cmp` son punteros a función. `generic.h` te ahorra escribirlos
+para los tipos comunes; para un struct propio escribe una comparación de una línea. El
+*convenio* de `cmp`: `cmp(a,b) < 0` significa que `a` va antes que `b`.
+</Callout>
+
+<Quiz question="¿Qué estructura mantiene las claves ordenadas y permite recorrerlas en orden?"
+  options="hashmap|omap|vector|gmap sin mas"
+  answer="1"
+  explain="omap/oset usan un arbol rojo-negro y ofrecen recorrido in-order; hashmap/gmap no garantizan orden."></Quiz>

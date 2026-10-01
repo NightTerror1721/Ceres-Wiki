@@ -1,0 +1,129 @@
+# 2D drawing with gfx
+
+`ceres/gfx.h` is the drawing layer: everything goes to a **surface in RAM** and is shown in
+a single transfer. Integer arithmetic (Bresenham lines, midpoint circles, scanline
+triangles), with **clipping** to the drawing region.
+
+## The drawing loop
+
+```c
+#include "ceres/gfx.h"
+#include "ceres/color.h"
+
+gfx_init(320, 200);
+for (;;) {
+    gfx_clear(COL_BLACK);
+    /* ... draw ... */
+    gfx_present();
+}
+```
+
+## Primitives
+
+```c
+gfx_pixel(x, y, COLOR);
+gfx_hline(x, y, len, COLOR);        // to the right
+gfx_vline(x, y, len, COLOR);        // downward
+gfx_line(x0, y0, x1, y1, COLOR);    // both ends included
+gfx_rect(x, y, w, h, COLOR);        // outline
+gfx_rect_fill(x, y, w, h, COLOR);
+gfx_circle(cx, cy, r, COLOR);       // r = 0 is one pixel
+gfx_circle_fill(cx, cy, r, COLOR);
+gfx_triangle(x0,y0, x1,y1, x2,y2, COLOR);
+gfx_triangle_fill(x0,y0, x1,y1, x2,y2, COLOR);
+unsigned int c = gfx_get(x, y);     // read a pixel
+```
+
+## Clipping
+
+Everything drawn is clipped to the active rectangle, so drawing outside is safe.
+
+```c
+gfx_set_clip(10, 10, 100, 50);   // limit drawing
+/* ... */
+gfx_reset_clip();
+gfx_get_clip(&x, &y, &w, &h);
+```
+
+## Surfaces and copies
+
+Drawing to a surface instead of the screen is how you pre-render something and reuse it.
+
+```c
+struct gfx_surface* background = gfx_surface_new(320, 200);
+gfx_set_target(background);
+/* draw the background once */
+gfx_set_target(NULL);            // back to the screen
+
+gfx_blit(background, 0, 0, 320, 200, 0, 0);              // copy to the screen
+gfx_blit_key(sprite, 0, 0, w, h, x, y, RGB(255,0,255));  // skip the key colour
+gfx_blit_scaled(sprite, x, y, 3);                        // each pixel 3x3
+```
+
+<Callout type="tip" title="Memory of a surface">
+A surface takes `w * h * 4` bytes: 250 KiB at 320×200, 3.5 MiB at 1280×720. Pre-render what
+you can and reuse it.
+</Callout>
+
+## The blitter (acceleration)
+
+On machines with the **blitter** device (the VM brings it), `gfx` uses it automatically:
+clearing, filling rectangles and the copies are done **by the host's hardware**, at zero
+instruction cost, with the same result pixel for pixel.
+
+```c
+gfx_use_blitter(1);     // default: use the blitter if there is one
+gfx_use_blitter(0);     // always in software
+```
+
+It is covered in detail in **The blitter**.
+
+## Example: an analogue clock
+
+```c title="clock.c"
+// USE: irq
+#include "stdio.h"
+#include "math.h"
+#include "ceres/gfx.h"
+#include "ceres/color.h"
+#include "ceres/game.h"
+#include "ceres/timer.h"
+
+int main(void)
+{
+    if (gfx_init(320, 320) != 0) return 1;
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 33);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+
+        float sec = (timer_millis() % 60000) / 1000.0f;
+        float min = (timer_millis() % 3600000) / 60000.0f;
+        float hour = (timer_millis() % 43200000) / 3600000.0f;
+
+        gfx_clear(RGB(18, 22, 34));
+        gfx_circle_fill(160, 160, 150, RGB(30, 38, 58));
+
+        const float TAU = 6.2831853f;
+        float as = sec / 60.0f * TAU, am = min / 60.0f * TAU, ah = hour / 12.0f * TAU;
+        gfx_line(160, 160, 160 + (int)(110 * sin(as)), 160 - (int)(110 * cos(as)), COL_RED);
+        gfx_line(160, 160, 160 + (int)(85  * sin(am)), 160 - (int)(85  * cos(am)), COL_WHITE);
+        gfx_line(160, 160, 160 + (int)(60  * sin(ah)), 160 - (int)(60  * cos(ah)), COL_YELLOW);
+        gfx_circle_fill(160, 160, 6, COL_WHITE);
+
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Quiz question="What does gfx_blit_key do?"
+  options="Copies only the transparent pixels|Copies skipping the pixels of the key colour|Scales the image|Clears the screen"
+  answer="1"
+  explain="It is the copy with a transparent colour: pixels equal to key are not written, which lets you draw irregular sprites."></Quiz>

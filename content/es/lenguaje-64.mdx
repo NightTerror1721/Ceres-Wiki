@@ -1,0 +1,125 @@
+# 64 bits y coma flotante
+
+## Enteros de 64 bits
+
+`long long` es un tipo **real de 8 bytes**. Aritmética, comparaciones, bits, desplazamientos
+y divisiones funcionan; el compilador lo baja como un par de palabras.
+
+```c
+long long grande = 9223372036854775807LL;
+long long suma   = grande + 1;             // se envuelve a complemento a dos
+printf("%lld\n", suma);
+```
+
+Los formatos de `printf` para tipos de ancho fijo vienen de `inttypes.h`:
+
+```c
+#include "inttypes.h"
+uint64_t nano = 1234567890123ull;
+printf("%" PRIu64 "\n", nano);      // "llu" por dentro
+```
+
+<Callout type="info" title="Operaciones que se rechazan con E5002">
+Un `switch` con discriminante de 64 bits, o pasar un `long long` a un builtin de una sola
+instrucción, no están soportados y dan `E5002`. Todo lo demás (sumar, restar, multiplicar,
+dividir, módulo, bits, comparar, convertir) funciona.
+</Callout>
+
+## Detectar desbordamiento
+
+```c
+#include "stdckdint.h"
+
+long long r;
+if (ckd_mul(&r, a, b))
+    puts("el producto no cabe");
+```
+
+Para el caso rápido de `int`, los builtins son unas pocas instrucciones:
+
+```c
+int r;
+if (__builtin_add_overflow(a, b, &r))
+    puts("desbordamiento de int");
+```
+
+## Coma flotante: primero, la verdad incómoda
+
+La máquina **sólo tiene coma flotante de 32 bits**. En concreto:
+
+- `float` es IEEE 754 binary32.
+- `double` y `long double` **son `float`** (el compilador avisa con `W2001`).
+- En un variádico, `float` **no** se promociona a `double`.
+- Constantes como `3.14159265358979` se redondean a 32 bits.
+
+```c
+double d = 1.0 / 3.0;      // en realidad es float; W2001
+```
+
+## La solución: `-fsoft-double`
+
+Si compilas con **`--soft-double`**, `double` pasa a ser un **binary64 real** implementado
+en software (`ceres/f64.h`). El compilador llama a `__f64_add`, `__f64_mul`, etc., así que
+cuesta una llamada por operación, pero la precisión es la de un `double` de verdad.
+
+```shell
+> ceresc prog.c build/lib/O2/libceres.car --decls ... -I include -O2 --soft-double --run
+```
+
+```c
+double x = 1.0 / 3.0;              // binary64 exacto
+printf("%.17g\n", x);              // 0.33333333333333331
+```
+
+Con `--soft-double` también cambian a 64 bits las constantes de `float.h`
+(`DBL_MANT_DIG`, `DBL_MAX`, …), `strtod` devuelve un `double` real y `printf`/`scanf`
+usan su propio motor de conversión decimal exacta.
+
+## Precisión de las funciones de `math.h`
+
+Las funciones matemáticas de la librería están medidas:
+
+| Función | Precisión |
+|---|---|
+| `sqrt`, `fabs`, `floor`… | 1 instrucción, exactas |
+| `sin`, `cos` | 1.5 ULP para **todo** `float` (reducción Payne–Hanek) |
+| `tan` | 2.5 ULP |
+| `erf` | 2 ULP |
+| `erfc`, `tgamma` | 4 ULP |
+| `lgamma` | 3 ULP |
+
+```c
+#include "math.h"
+printf("%.6f\n", sin(M_PI / 6));   // 0.500000
+```
+
+<Callout type="warn" title="Dividir por cero no falla">
+A menos que actives la característica IEEE, una división de `float` por cero no da `inf`:
+pone el flag *Trap* y deja el destino como estaba. Para cambiarlo:
+
+```c
+sys_set_features(sys_features() | SYS_FEATURE_IEEE_DIVIDE);
+```
+
+Y aun así, comprueba los divisores: la librería lo hace por ti en `fmod`, `sin`, etc.
+</Callout>
+
+## Convertir entre bits y floats
+
+```c
+unsigned int bits = float_bits(1.0f);        // 0x3F800000
+float         f   = float_from_bits(bits);   // 1.0f
+int           tipo = fpclassify(f);          // FP_NORMAL
+```
+
+También hay una clase `f64` (binary64) que puedes usar sin `--soft-double`:
+
+```c
+#include "ceres/f64.h"
+f64 third = __f64_div(__f64_from_i32(1), __f64_from_i32(3));   // 0x3FD5555555555555
+```
+
+<Quiz question="¿Qué hace --soft-double?"
+  options="Acelera los float|Hace que double sea un IEEE 754 de 64 bits en software|Usa la FPU de 64 bits del anfitrion|Desactiva los avisos W2001"
+  answer="1"
+  explain="La máquina no tiene coma flotante de 64 bits: el compilador emula binary64 llamando a las rutinas de ceres/f64.h."></Quiz>

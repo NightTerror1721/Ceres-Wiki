@@ -1,0 +1,17 @@
+{
+  "generated": "2026-10-01",
+  "tools": {
+    "ceresc": "0.1.0"
+  },
+  "packages": {
+    "ceres-binaries": "0.1.0"
+  },
+  "stdlib": "1.0",
+  "commits": {
+    "CeresASM": "b30e3c1",
+    "Ceres-C": "c9018ee",
+    "Ceres STDLIB": "d56c09f",
+    "CeresBinaries": "cae2205"
+  },
+  "_comment": "Fija las versiones/commits contra los que se verifico la wiki. Actualizalo al regenerar las tablas (tools/gen/). Ver PLAN-MODERNIZACION.md."
+}

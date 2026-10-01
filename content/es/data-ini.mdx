@@ -1,0 +1,97 @@
+# Configuración INI
+
+`ceres/ini.h` lee y escribe ficheros de configuración con secciones, del estilo clásico.
+
+```ini
+; ajustes del juego
+[video]
+escala = 3
+pantalla_completa = sí
+
+[audio]
+volumen = 0.8
+```
+
+## Leer línea a línea (sin guardar nada)
+
+`ini_parse` entrega cada valor a una función tuya:
+
+```c
+#include "ceres/ini.h"
+
+static int visita(const char* seccion, const char* clave, const char* valor, void* ctx)
+{
+    printf("[%s] %s = %s\n", seccion, clave, valor);
+    return 0;                       // distinto de 0 detiene el parseo
+}
+
+int rc = ini_parse(texto, visita, NULL);
+// rc < 0: detenido por el visitante. Una linea ilegible deja ini_error_line.
+```
+
+## Documento en memoria
+
+La estructura `struct ini` guarda todos los valores y los escribe de vuelta.
+
+```c
+struct ini cfg;
+ini_init(&cfg);
+
+ini_load(&cfg, "ajustes.ini");      // un fichero que no existe = sin ajustes
+
+int escala = ini_get_int(&cfg, "video", "escala", 2);
+int full   = ini_get_bool(&cfg, "video", "pantalla_completa", 0);
+float vol  = ini_get_float(&cfg, "audio", "volumen", 0.5f);
+const char* nombre = ini_get(&cfg, "jugador", "nombre", "Anonimo");
+
+ini_set_int(&cfg, "video", "escala", escala + 1);
+ini_save(&cfg, "ajustes.ini");
+ini_free(&cfg);
+```
+
+| Función | Devuelve |
+|---|---|
+| `ini_get(d, sec, key, def)` | La cadena, o `def` |
+| `ini_get_int` | Entero decimal o `0x…` (no octal) |
+| `ini_get_float` | Float |
+| `ini_get_bool` | `yes/true/on/1` vs `no/false/off/0` |
+| `ini_set*` | `0`, o `-1` (`ENOMEM`/`EINVAL`) |
+| `ini_remove` | `0`, o `-1` (`ENOENT`) |
+| `ini_write(d, &size)` | El texto, `malloc`'d |
+
+## Sintaxis
+
+- Líneas vacías y las que empiezan por `;` o `#` son comentarios.
+- `[seccion]` abre una sección; las claves previas van a la sección `""`.
+- `clave = valor` o `clave: valor`, con espacios recortados.
+- Un valor entre **comillas dobles** conserva espacios, `;`, `#`, y admite `\" \\ \n \t`.
+- Nombres de sección y clave **sin distinguir mayúsculas**.
+- Una clave repetida se queda con el último valor.
+
+## Escribir a mano
+
+```c
+char* texto = ini_write(&cfg, &tam);
+fputs(texto, f);
+free(texto);
+```
+
+Las secciones se agrupan en el orden en que aparecieron por primera vez; los comentarios
+no se conservan. Una línea de más de 512 bytes es un error (se sigue con las demás).
+
+<Callout type="tip" title="Un patrón: ajustes con valores por defecto">
+Carga al arrancar y consulta con *fallback* cada vez. Si el fichero no existe o una clave
+falta, el valor por defecto hace que el juego siga funcionando.
+
+```c
+struct ini cfg;
+ini_init(&cfg);
+ini_load(&cfg, "host:config.ini");
+int escala = ini_get_int(&cfg, "video", "escala", 2);
+```
+</Callout>
+
+<Quiz question="¿Cómo se lee una clave que puede contener ';'?"
+  options="Sin mas|Entre comillas dobles|Con \\;|No se puede"
+  answer="1"
+  explain="Un valor sin comillas termina en un ; o # precedido de espacio; entre comillas dobles conserva todo y admite escapes."></Quiz>

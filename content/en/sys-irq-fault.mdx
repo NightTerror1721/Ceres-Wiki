@@ -1,0 +1,130 @@
+# Interrupts and faults
+
+The machine has **64 vectors**. Numbers 0–15 are exceptions (always delivered); 16–63 are
+user interrupts (delivered only with interrupts enabled). The library names them in
+`interrupts.h`.
+
+| No. | Name | Source |
+|---|---|---|
+| 0 | Reset | The program restarts |
+| 1 | Trap | `__builtin_trap()` |
+| 2 | IllegalInstruction | Invalid opcode |
+| 3 | MemoryFault | Store to `.text`/page zero, illegal access |
+| 4 | DivisionByZero | Division by zero (if requested) |
+| 5 | StackOverflow | The stack passed its limit |
+| 6 | AlignmentFault | Misaligned 16/32-bit access |
+| 7 | PageFault | Page not present/permission (with MMU) |
+| 16 | **Timer** | The timer expired |
+| 17 | **Terminal** | Input available / end of input |
+| 18 | **DMA** | Transfer complete |
+| 19 | **Keyboard** | A key event |
+| 20 | **Mouse** | Movement or button |
+| 21 | **Gamepad** | State change |
+| 22 | **Audio** | A tone ended |
+| 23 | **Periph** | A medium was connected or removed |
+| 24 | **Alarm** | The timer's alarm |
+
+## Handlers
+
+They are declared with `__interrupt` and bound with `__interrupt_vector`, **once** in the
+whole program:
+
+```c
+#include "interrupts.h"
+
+__interrupt void my_timer(void)
+{
+    /* short: no printf, no malloc */
+}
+
+__interrupt_vector(IRQ_TIMER, my_timer);
+```
+
+<Callout type="warn" title="One owner per vector">
+The linker allows a single `interrupt N` per number in the whole program. The `irq`, `fault`
+and `mmu` modules bind vectors, so if you write your own handler for a vector, do **not**
+link the module that also owns it.
+</Callout>
+
+## Binding them at run time (the `irq` module)
+
+Because the table cannot be rewritten at run time, the `irq` module owns the device vectors
+once and dispatches to functions you register:
+
+```c
+// USE: irq
+#include "ceres/irq.h"
+
+static void on_keyboard(int irq) { (void)irq; got_key = 1; }
+
+irq_attach(IRQ_KEYBOARD, on_keyboard);
+irq_enable();                       // sti
+/* ... */
+irq_detach(IRQ_KEYBOARD);
+```
+
+`irq_attach` covers 16–24. `irq_name(n)` gives a readable name.
+
+## Critical sections
+
+```c
+unsigned int state = irq_save();    // mask and say whether they were enabled
+/* ... code that must not be interrupted ... */
+irq_restore(state);                 // put things back
+```
+
+`irq_save`/`irq_restore` are **inline** (a `cli` and a conditional `sti`). They nest. In
+`ceres/atomic.h` you have `atomic_add/swap/cas` and `CRITICAL_BEGIN/END` built on them.
+
+## Waiting for an interrupt
+
+```c
+irq_wait();                  // sti + halt, indivisible
+irq_wait_flag(&flag);        // sleep until a handler sets flag
+```
+
+<Callout type="info" title="A halt wakes on any request">
+The machine wakes a `halt` on **any** request a device raises, whether or not a handler
+runs. That is why `timer_wait_ms`, `key_wait` and `getchar` can sleep without you writing a
+handler.
+</Callout>
+
+## Fault reports (the `fault` module)
+
+With nothing, a fault falls through to the BIOS stub, which prints an `E` and stops. The
+`fault` module installs handlers that **report** and stop the machine, with the address and
+the access:
+
+```c
+// USE: fault
+#include "ceres/sys.h"
+
+sys_install_fault_handlers(0);       // you can pass your own hook
+
+/* on a fault: "store 2 bytes at 0x0010001 in 0x0004A12C" and stop (status 139) */
+```
+
+```c
+unsigned int where = sys_fault_address();   // data address of the fault
+unsigned int what  = sys_fault_access();    // FAULT_READ/WRITE/FETCH | size << 8
+unsigned int fp    = sys_fault_frame();     // frame for backtrace_from()
+```
+
+Unlike the others, `SIGFPE` (division by zero) is **resumable**: the handler reports, and when
+it returns the machine continues at the instruction after the division.
+
+## Hardware signals
+
+With the `fault` module linked and `sys_install_fault_handlers(0)` called, `signal()` accepts
+handlers for `SIGFPE`, `SIGILL` and `SIGSEGV`. The handler runs on the **system stack** with
+interrupts masked: short, no `printf` or `malloc`; `exit()` or `longjmp()` are fine.
+
+## And if you want names
+
+Link with **`--symtab`** and a fault report (or a `backtrace_print`) will tell you the
+function and the call chain, not just an address. See **Backtrace and debugging**.
+
+<Quiz question="How many owners does the linker allow per interrupt number?"
+  options="One|Two|64|None"
+  answer="0"
+  explain="A single binding per vector in the whole program; that is why optional modules are chosen with // USE:."></Quiz>

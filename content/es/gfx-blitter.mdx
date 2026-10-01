@@ -1,0 +1,85 @@
+# El blitter
+
+El **blitter** es un dispositivo de la máquina (`0xFF0C0000`) que hace operaciones de
+rectángulo sobre superficies RGB32 **en el anfitrión**, a coste cero de instrucciones para
+tu programa. `gfx` lo usa solo cuando está; esta página es para que lo aproveches
+directamente o sepas qué está pasando por debajo.
+
+## Comprobar que existe
+
+```c
+#include "ceres/blitter.h"
+
+if (blitter_available())
+    puts("hay blitter");
+```
+
+En un slot vacío se leen todo unos, así que `blitter_available()` lo detecta.
+
+## Operaciones
+
+Una superficie es la dirección del primer píxel de un rectángulo y su **stride** (bytes de
+una fila a la siguiente).
+
+```c
+blitter_fill(dst, dst_stride, w, h, color);
+blitter_copy(dst, dst_stride, src, src_stride, w, h);              // admite solape
+blitter_copy_key(dst, dst_stride, src, src_stride, w, h, key);     // salta el color key
+blitter_copy_scaled(dst, dst_stride, src, src_stride, w, h, scale); // 1..8
+blitter_copy_indexed(dst, dst_stride, src8, src_stride, w, h, palette, key);
+```
+
+Todas devuelven `0`, o `-1` si no hay blitter o una fila se sale de RAM.
+
+`blitter_copy_indexed` toma píxeles de 8 bits y los traduce por una **paleta de 256
+colores**; con `key` de `-1` dibuja todos, y con `0..255` deja fuera ese índice.
+
+```c
+unsigned int paleta[256];
+unsigned char indices[64 * 64];
+blitter_copy_indexed(destino, 320 * 4, indices, 64, 64, 64, paleta, -1);
+```
+
+## Cómo lo usa gfx
+
+```c
+gfx_use_blitter(1);    // por defecto
+```
+
+Con el blitter activo, `gfx_clear`, `gfx_rect_fill`, `gfx_blit`, `gfx_blit_key` y
+`gfx_blit_scaled` se hacen por hardware; el resto (líneas, círculos, triángulos) sigue en
+software. El resultado es idéntico píxel a píxel, así que puedes comparar salidas.
+
+<Callout type="info" title="Por qué importa para un juego">
+Rellenar el fondo y copiar sprites son las operaciones más frecuentes de un juego 2D. Con
+el blitter, ese trabajo no consume **instrucciones** de la máquina: tu presupuesto por
+fotograma queda entero para la lógica.
+</Callout>
+
+## Transparencia por hardware
+
+```c
+blitter_copy_key(destino, stride, sprite, sstride, w, h, RGB(255, 0, 255));
+```
+
+Es exactamente lo que `gfx_blit_key` hace por dentro. El *reverso* de la paleta indexada es
+ideal para sprites con pocos colores: un byte por píxel y una paleta que puedes cambiar
+para "recolorear" el mismo sprite (por ejemplo, un enemigo en tres tonos).
+
+## Un motor de baldosas con el blitter
+
+```c
+/* una tira de sprites indexados de 16x16, 8 sprites por fila */
+void dibujar_tile(int destino_x, int destino_y, int tile)
+{
+    blitter_copy_indexed(
+        pantalla + destino_y * (320 * 4) + destino_x * 4, 320 * 4,
+        tiles + tile * 16,                                   /* 1 byte/pixel */
+        16, 16, 16, paleta, 0);                              /* indice 0 transparente */
+}
+```
+
+<Quiz question="¿Qué clave usa blitter_copy_indexed para dibujar TODOS los píxeles?"
+  options="0|-1|255|NULL"
+  answer="1"
+  explain="key = -1 dibuja todos; un valor 0..255 deja fuera ese índice de la paleta."></Quiz>

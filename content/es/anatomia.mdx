@@ -1,0 +1,105 @@
+# Anatomía de un programa
+
+Cuando compilas un programa Ceres, este no se carga en una memoria "plana" cualquiera:
+tiene un **mapa** con secciones bien definidas. Entenderlo te ayudará a razonar sobre
+memoria, pila y heap.
+
+## El mapa de memoria
+
+| Rango | Qué hay |
+|---|---|
+| `0x00000000` | **Tabla de vectores** (64 entradas de 4 bytes); la entrada 0 es el *reset* |
+| `0x00000100` | **BIOS** (768 bytes): stubs por defecto de los manejadores |
+| `0x00000400` | **Empieza tu programa**: `.text`, `.rodata`, `.data`, `.bss` |
+| … | **Heap** (crece hacia arriba, bajo demanda) |
+| … | ↓ **Pila** (crece hacia abajo) |
+| fin de RAM − 4 KiB | **Pila del sistema**: donde corren los manejadores de interrupción |
+| `0xFF000000` + | **Dispositivos MMIO** (terminal, timer, disco, display, …) |
+
+<Callout type="info" title="Los 1 KiB de abajo están protegidos">
+Escribir por debajo de `0x400` (tabla de vectores y BIOS) o sobre el `.text` dispara un
+`MemoryFault`. La máquina no deja que un programa se automodifique ni que reescriba los
+vectores de interrupción en caliente.
+</Callout>
+
+## Las secciones
+
+| Sección | Contenido | ¿Escribible? |
+|---|---|---|
+| `.text` | El código | No |
+| `.rodata` | Constantes, cadenas, tablas `const` | No |
+| `.data` | Variables globales inicializadas | Sí |
+| `.bss` | Variables globales a cero | Sí (se pone a cero al cargar) |
+
+## Verlo en la máquina
+
+`ceres/sys.h` puede imprimir el mapa real de tu programa en ejecución:
+
+```c title="layout.c"
+#include "stdio.h"
+#include "ceres/sys.h"
+
+int main(void)
+{
+    sys_print_layout();          // tabla legible con los límites de cada sección
+    printf("sp = %#x  heap = %#x  libres = %u bytes\n",
+           sys_sp(), sys_heap_start(), sys_stack_free());
+    return 0;
+}
+```
+
+<Output title="Ejemplo de salida">
+text      00000400 - 0000A1C4
+rodata    0000A1C4 - 0000C3F0
+data      0000C3F0 - 0000C420
+bss       0000C420 - 0000D280
+heap      0000D280  sp 000F0000   free 933248
+sp = 0xF0000  heap = 0xD280  libres = 933248 bytes
+</Output>
+
+<Callout type="tip" title="La pila no puede pisar el heap">
+El heap crece hacia arriba pero se detiene antes de la pila. Cada vez que crece, `malloc`
+sube el **límite de pila** de la máquina: si tu función recursiva baja demasiado, recibes
+un `StackOverflow` en vez de corromper datos silenciosamente.
+</Callout>
+
+## El pipeline de compilación
+
+```
+   prog.c ──ceresc──▶ prog.casm ──ceres asm -c──▶ prog.cobj ──ceres link──▶ prog.cres ──ceres run──▶
+   (C)                 (CASM)                     (objeto)                  (programa)          (máquina)
+```
+
+| Extensión | Qué es |
+|---|---|
+| `.c` | Tu código fuente en C |
+| `.casm` | Ensamblador Ceres **legible**, con tus líneas de origen en comentarios |
+| `.cobj` | Objeto relocalizable |
+| `.car` | Archivo: varios objetos juntos (la librería es `libceres.car`) |
+| `.cres` | Programa enlazado, listo para `ceres run` |
+
+<Callout type="info" title="Mira el CASM">
+Compila con `-S` y abre el `.casm` generado. Cada instrucción lleva un comentario
+`// archivo:línea` que apunta a tu C. Es la mejor forma de aprender cómo compila Ceres-C.
+</Callout>
+
+## Un vistazo al CASM generado
+
+Para una función diminuta, el ensamblador tiene este aspecto:
+
+```casm title="suma.casm (fragmento)"
+@text
+global suma:                 // int suma(int a, int b)
+    enter __frame_suma
+    add r0, r0, r1           // a + b, el resultado va en r0
+    leave
+    ret
+```
+
+Los argumentos llegan en `r0`–`r3` (y `f0`–`f3` para floats); el resultado vuelve en
+`r0`. `enter`/`leave` montan y desmontan el marco de pila.
+
+<Quiz question="¿Dónde vive una variable global inicializada a 5?"
+  options=".text|.rodata|.data|.bss"
+  answer="2"
+  explain=".data guarda las globales inicializadas; .bss las que van a cero y .rodata las constantes."></Quiz>

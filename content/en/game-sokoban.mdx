@@ -1,0 +1,247 @@
+# Sokoban levels
+
+Push the crates onto the goals. It is the perfect example of a **level-based puzzle game**:
+a grid, simple rules, levels as text and **undo**.
+
+<GameDemo kind="sokoban" title="Sokoban">
+**Arrows** or **WASD** to move. **R** restarts the level, **Nivel** moves to the next one.
+</GameDemo>
+
+## The level as text
+
+The easiest way to write puzzles: each character is a cell.
+
+| Character | Meaning |
+|---|---|
+| `#` | Wall |
+| ` ` | Floor |
+| `@` | Player |
+| `$` | Crate |
+| `.` | Goal |
+| `*` | Crate on a goal |
+| `+` | Player on a goal |
+
+```c title="sokoban.c (levels)"
+static const char* const levels[] = {
+    "#####",
+    "#   #",
+    "# $ #",
+    "# @ #",
+    "#  .#",
+    "#####",
+
+    "  ###  ",
+    "  #.#  ",
+    "### ###",
+    "# $@$ #",
+    "#  .  #",
+    "#######",
+};
+static const int total_levels = sizeof levels / sizeof levels[0];
+```
+
+For a full version, load the levels from a file with `fgets` or from a **resource pack**. See
+**Streams and files** and **Resource packs**.
+
+## The board
+
+We separate the **static** part (walls and goals) from the **movable** part (player and
+crates): that makes drawing and undo trivial.
+
+```c
+#define MAX_WIDTH 32
+#define MAX_HEIGHT 20
+
+static char static_layer[MAX_HEIGHT][MAX_WIDTH];   // '#', '.', ' '
+static char movable[MAX_HEIGHT][MAX_WIDTH];        // '$' or ' '
+static int player_x, player_y;
+static int width, height;
+static int moves;
+
+static void load_level(int n)
+{
+    const char* const* map = &levels[(n % total_levels) * 6];   // 6 rows per level
+    /* ... in a real game, read lines until an empty string ... */
+}
+```
+
+<Callout type="info" title="Switch the levels to a flat array">
+To simplify the index, store each level as its own array:
+
+```c
+static const char* const level1[] = { "#####", "#@$.#", "#####" };
+```
+and keep an array of levels `const char* const* levels[] = { level1, level2 };` with their own
+height.
+</Callout>
+
+## The rules
+
+Pushing requires the next cell to be free (or the gap of a crate that moves):
+
+```c
+static int can(int x, int y)      // is there floor and no wall?
+{
+    if (x < 0 || x >= width || y < 0 || y >= height) return 0;
+    return static_layer[y][x] != '#';
+}
+
+static int move(int dx, int dy)
+{
+    int nx = player_x + dx, ny = player_y + dy;
+    if (!can(nx, ny)) return 0;
+
+    if (movable[ny][nx] == '$')       // there is a crate to push
+    {
+        int bx = nx + dx, by = ny + dy;
+        if (!can(bx, by) || movable[by][bx] == '$') return 0;
+        save_undo();
+        movable[ny][nx] = ' ';
+        movable[by][bx] = '$';
+    }
+    else
+    {
+        save_undo();
+    }
+
+    player_x = nx; player_y = ny;
+    moves++;
+    return 1;
+}
+```
+
+## Undo
+
+A stack of moves. Store the minimum to reverse it: the position and whether a crate moved.
+
+```c
+#define MAX_UNDO 256
+
+struct move { int x, y, dx, dy; int pushed; };
+static struct move undo[MAX_UNDO];
+static int undo_top;
+
+static void save_undo(void)
+{
+    if (undo_top >= MAX_UNDO) return;
+    /* the move is filled in when move() is called; here we leave a slot */
+    undo_top++;
+}
+
+/* on pressing U */
+static void undo_move(void)
+{
+    if (undo_top == 0) return;
+    undo_top--;
+    struct move* m = &undo[undo_top];
+    if (m->pushed)
+    {
+        movable[m->y + m->dy][m->x + m->dx] = ' ';      // the crate goes back
+        movable[m->y][m->x] = '$';
+    }
+    player_x = m->x;
+    player_y = m->y;
+    moves--;
+}
+```
+
+<Callout type="warn" title="The order matters">
+Fill the `struct move` **before** moving anything: record the old position, the direction and
+whether it was going to push. Then undo is a simple inverse.
+</Callout>
+
+## Is the level solved?
+
+Every crate on a goal:
+
+```c
+static int solved(void)
+{
+    for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+            if (movable[y][x] == '$' && static_layer[y][x] != '.')
+                return 0;
+    return 1;
+}
+```
+
+## Drawing
+
+```c
+static void draw(int level, int* top)
+{
+    fb_clear(' ');
+    for (int y = 0; y < height; y++)
+        for (int x = 0; x < width; x++)
+        {
+            unsigned char attr = 0;
+            char c = ' ';
+            if (static_layer[y][x] == '#') { c = '#'; attr = FB_ATTR(FB_WHITE, FB_BLUE); }
+            else if (static_layer[y][x] == '.') { c = 'o'; attr = FB_ATTR(FB_GREEN, FB_BLACK); }
+            if (movable[y][x] == '$')
+            {
+                c = '@';   // crate
+                attr = (static_layer[y][x] == '.') ? FB_ATTR(FB_BLACK, FB_GREEN)
+                                                   : FB_ATTR(FB_BLACK, FB_YELLOW);
+            }
+            if (x == player_x && y == player_y) { c = 'P'; attr = FB_ATTR(FB_WHITE, FB_RED); }
+            fb_put_attr(x, y, c, attr);
+        }
+    fb_printf(0, height, "Level %d  moves %d  U:undo  R:restart  N:next",
+              level + 1, moves);
+    *top = 0;
+    fb_present();
+}
+```
+
+## The loop
+
+```c
+int main(void)
+{
+    if (fb_init(24, 12) != 0) return 1;
+    int level = 0;
+    load_level(level);
+    key_start();
+
+    for (;;)
+    {
+        int top = 0;
+        draw(level, &top);
+        int k = key_wait();
+        if (k == KEYC_ESC || k == 'q') break;
+
+        if (k == 'u')            undo_move();
+        else if (k == 'r')       load_level(level);
+        else if (k == 'n')     { level++; load_level(level); }
+        else if (k == KEYC_UP || k == 'w')    move(0, -1);
+        else if (k == KEYC_DOWN || k == 's')  move(0, 1);
+        else if (k == KEYC_LEFT || k == 'a')  move(-1, 0);
+        else if (k == KEYC_RIGHT || k == 'd') move(1, 0);
+
+        if (solved())
+        {
+            fb_printf(2, height - 1, "SOLVED! (N for next)");
+            fb_present();
+            key_wait();
+            level++;
+            load_level(level);
+        }
+    }
+    key_stop();
+    fb_shutdown();
+    return 0;
+}
+```
+
+## Ideas to go on
+
+- **Step count and optimal**: save the best per level (a `save`).
+- **Unlimited undo** with a `stack` from the library instead of the array.
+- **Transitions**: the same engine works for other grid puzzles (sliding, rays).
+- **Graphics**: swap `fb_put_attr` for `tilemap_draw` and you have Sokoban in pixels.
+
+<Quiz question="When can a crate be pushed?"
+  options="Always|When the next cell (beyond the crate) is free floor|When the player is on a goal|Only once"
+  answer="1"
+  explain="Pushing requires floor behind the crate and no wall or another crate."></Quiz>

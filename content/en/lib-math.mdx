@@ -1,0 +1,114 @@
+# Mathematics
+
+`math.h` is broad, and an important part of it runs on the **machine itself** in a single
+instruction.
+
+## One instruction
+
+These functions are a single *opcode* (and also macros over the compiler's builtins, so a
+call costs that instruction):
+
+```c
+fabs(x)  sqrt(x)  floor(x)  ceil(x)  trunc(x)  round(x)
+fmin(x,y)  fmax(x,y)  copysign(x,y)  fma(x,y,z)
+rcp(x)   // approximate 1/x     rsqrt(x)   // approximate 1/sqrt(x)
+```
+
+`fma` accumulates: `fma(a,b,c)` computes `a*b + c` with a single rounding.
+
+## Classification
+
+```c
+isnan(x)  isinf(x)  isfinite(x)  isnormal(x)  signbit(x)   // 0/1
+fpclassify(x)   // FP_NAN, FP_INFINITE, FP_ZERO, FP_SUBNORMAL, FP_NORMAL
+```
+
+## In software
+
+```c
+sin cos tan sincos asin acos atan atan2
+exp exp2 log log2 log10 pow
+sinh cosh tanh asinh acosh atanh expm1 log1p
+cbrt hypot ldexp frexp modf fdim remainder
+nearbyint rint lround lrint llround llrint
+ilogb logb nextafter
+erf erfc tgamma lgamma
+```
+
+With declared, verified accuracy:
+
+| Group | Accuracy |
+|---|---|
+| `sin`, `cos` | 1.5 ULP for every `float` (Payne–Hanek reduction) |
+| `tan` | 2.5 ULP |
+| `erf` | 2 ULP |
+| `erfc`, `tgamma` | 4 ULP |
+| `lgamma` | 3 ULP |
+| the rest | ~1–3 ULP (except `pow` with a large exponent) |
+
+<Callout type="info" title="No lost digits for large angles">
+The argument reduction uses the exact Cody–Waite pieces up to |x|≈6000, and above that
+switches to **Payne–Hanek** with 256 bits of 2/π. That is what lets it promise 1.5 ULP for
+*any* `float`, not just small angles.
+</Callout>
+
+## Constants
+
+```c
+M_PI  M_E  M_LN2  M_LN10  M_SQRT2  M_SQRT1_2  M_LOG2E ...
+INFINITY   NAN
+```
+
+<Callout type="warn" title="INFINITY and NAN are not written as 1.0/0.0">
+A division by zero does **not** produce `inf`: it sets the *Trap* flag. That is why
+`math.h` builds them from their bits (`float_from_bits(0x7F800000u)`), and why
+`fmod`/`sin`/`log` check their divisors.
+</Callout>
+
+## Examples
+
+### Distance and normalising
+
+```c
+#include "math.h"
+
+float dist(float x0, float y0, float x1, float y1)
+{
+    return hypot(x1 - x0, y1 - y0);      // without overflowing
+}
+```
+
+### Smooth motion
+
+```c
+float t = (float)frame / 60.0f;
+float x = 100.0f + 50.0f * sin(t);       // oscillates between 50 and 150
+```
+
+### Interpolation with easing
+
+```c
+#include "ceres/vecmath.h"
+float v = smoothstep(0.0f, 1.0f, t);     // smooth start and stop
+float y = lerpf(100.0f, 300.0f, v);
+```
+
+### Checking whether a number is a power of two
+
+```c
+#include "ceres/bits.h"
+if (bit_is_pow2(n)) { /* ... */ }
+```
+
+## Precision versus speed
+
+If you need speed over exactness for a normalisation, `rsqrt` is one instruction:
+
+```c
+float inv = rsqrt(x*x + y*y + z*z);      // fast 1/|v|
+```
+
+<Quiz question="How many ULP of error does sin() have for any float?"
+  options="None (exact)|1.5|100|Depends on the angle"
+  answer="1"
+  explain="Thanks to the Payne-Hanek reduction, sin/cos keep 1.5 ULP over the whole representable range."></Quiz>

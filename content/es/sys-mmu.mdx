@@ -1,0 +1,111 @@
+# Memoria virtual (MMU)
+
+La máquina tiene una **MMU** de dos niveles con páginas de 4 KiB, apagada por defecto.
+`ceres/mmu.h` te deja encenderla desde C, hacer *demand paging* y poner **páginas guarda**
+en la base de las pilas de las tareas.
+
+<Callout type="warn" title="Módulo opcional">
+El módulo que atiende los fallos de página (`mmu_on_fault`) ata el vector **PageFault
+(7)**, así que se pide con `// USE: mmu` y **no** puede convivir con el módulo `fault`, que
+también lo ata.
+</Callout>
+
+## Un espacio de direcciones
+
+Un espacio es un **directorio de páginas** (1024 entradas) y las tablas por debajo,
+reservados del heap.
+
+```c
+#include "ceres/mmu.h"
+
+struct mmu_space s;
+mmu_space_init(&s);                         // vacio: nada mapeado
+
+mmu_identity(&s, MMU_WRITE | MMU_EXEC);     // RAM tal cual: el programa sigue donde corre
+mmu_activate(&s);                           // traduce direcciones
+
+/* ... */
+mmu_deactivate();
+mmu_space_free(&s);
+```
+
+| Función | Qué hace |
+|---|---|
+| `mmu_map(s, va, pa, bytes, flags)` | Mapea un rango (reemplaza lo anterior) |
+| `mmu_unmap(s, va, bytes)` | Quita: un acceso ahí falla |
+| `mmu_protect(s, va, bytes, flags)` | Cambia permisos de páginas ya mapeadas |
+| `mmu_translate(s, va, &pa)` | Dirección física y flags, o `-1` |
+| `mmu_identity(s, flags)` | Mapea toda la RAM a sí misma |
+| `mmu_activate` / `mmu_deactivate` / `mmu_active` | Enciende/apaga/consulta |
+
+Flags: `MMU_WRITE`, `MMU_EXEC` (leer siempre está permitido si la página está presente),
+más `MMU_ACCESSED` y `MMU_DIRTY` en lo que devuelve `mmu_translate`.
+
+<Callout type="info" title="Lo que nunca se traduce">
+La página cero y la BIOS (`< 0x400`), la **pila del sistema** al final de la RAM y todos
+los dispositivos (`0xFF000000` en adelante) siguen siendo físicos, así que no necesitan
+mapeo y un manejador de fallo siempre puede correr.
+</Callout>
+
+## Demand paging
+
+`mmu_on_fault(handler)` instala un manejador que **decide** qué hacer con un fallo:
+
+```c
+static int al_fallar(unsigned int va, unsigned int pc, unsigned int acceso)
+{
+    if (en_mi_tabla(va))
+    {
+        mmu_map(mmu_active(), va & ~(MMU_PAGE - 1), frame_de(va), MMU_PAGE, MMU_WRITE);
+        return 1;               // la instruccion que fallo se reintenta
+    }
+    return 0;                   // informar y parar (status 139)
+}
+mmu_on_fault(al_fallar);
+```
+
+Devolver `1` cuando la página ya está mapeada hace que la instrucción que provocó el fallo
+se **reintente** (así funciona la carga bajo demanda). Devolver `0` informa y detiene el
+programa. El manejador corre en la pila del sistema con las interrupciones enmascaradas:
+corto, sin `printf`.
+
+## Páginas guarda
+
+Para que una pila de tarea que se desborda falle en vez de escribir en el heap de debajo:
+
+```c
+mmu_guard_task_stacks(&s);     // cada tarea nueva recibe una pagina guarda sin mapear
+```
+
+El espacio debe mapear el heap a sí mismo (`mmu_identity`). Lo vemos en **Tareas y canales**.
+
+## Un ejemplo mínimo
+
+```c title="vm.c"
+// USE: mmu
+#include "stdio.h"
+#include "ceres/mmu.h"
+
+int main(void)
+{
+    struct mmu_space s;
+    mmu_space_init(&s);
+
+    /* identidad de toda la RAM, de solo lectura y ejecucion */
+    mmu_identity(&s, MMU_EXEC);
+    mmu_activate(&s);
+    puts("paginacion activada (RAM de solo lectura)");
+
+    /* una escritura a una global ahora fallaria sin MMU_WRITE */
+    mmu_protect(&s, 0, sys_memory_size(), MMU_WRITE | MMU_EXEC);
+
+    mmu_deactivate();
+    mmu_space_free(&s);
+    return 0;
+}
+```
+
+<Quiz question="¿Qué debes devolver desde el manejador de mmu_on_fault para reintentar la instrucción?"
+  options="0|1|-1|El numero de pagina"
+  answer="1"
+  explain="Devolver 1 tras mapear la pagina hace que la instruccion que fallo se vuelva a ejecutar (demand paging)."></Quiz>

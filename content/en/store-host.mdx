@@ -1,0 +1,114 @@
+# Host files
+
+Sometimes you do not want a virtual disk: you want to read and write files **on your
+computer** (assets, configuration, logs). That is *semihosting*: the program asks the host,
+and the host does it.
+
+## How to enable it
+
+Start the machine with `--host-dir`:
+
+```shell
+> ceres run prog.cres --host-dir ./data
+```
+
+Without `--host-dir`, the device exists but **every operation returns `-ENODEV`**, and the
+program keeps working.
+
+## With `fopen` and the `host:` prefix
+
+```c
+#include "stdio.h"
+
+FILE* f = fopen("host:config.txt", "w");
+fprintf(f, "sound=on\n");
+fclose(f);
+
+FILE* r = fopen("host:config.txt", "r");
+char line[64];
+while (fgets(line, sizeof line, r)) printf("%s", line);
+fclose(r);
+```
+
+`freopen("host:log.txt", "a", stdout)` redirects standard output to a host file. `term:`
+returns it to the terminal.
+
+## With the direct API
+
+```c
+#include "ceres/hostfs.h"
+
+int h = host_open("levels/1.txt", HOST_READ);
+if (h >= 0)
+{
+    char buf[256];
+    int n = host_read(h, buf, sizeof buf);
+    host_close(h);
+}
+```
+
+| Function | Notes |
+|---|---|
+| `host_open(path, flags)` | The handle is 0..7 (at most 8 open) |
+| `host_read` / `host_write` | Return bytes |
+| `host_seek(h, off, whence)` | 0=SET, 1=CUR, 2=END |
+| `host_size(h)` / `host_stat(path)` | Size |
+| `host_remove` / `host_rename` / `host_mkdir` | Management |
+| `host_list(dir, i, name, size)` | i-th entry, sorted; directories end in `/` |
+| `host_available()` | 1 if a host directory is attached |
+
+All return `0` or more on success, and **minus an errno** (`-ENOENT`, `-EEXIST`,
+`-ENOTEMPTY`, `-EMFILE`…) on failure.
+
+## Listing a directory
+
+```c
+char name[128];
+for (unsigned int i = 0; ; i++)
+{
+    int n = host_list("", i, name, sizeof name);   // "" = root of host-dir
+    if (n <= 0) break;
+    printf("%s\n", name);
+}
+```
+
+## Security: it is a cage
+
+Paths are **relative** inside `<dir>`. An empty component, `.` or `..`, or one containing
+`:` (drive or root), is refused with `-EINVAL`. You cannot escape the directory even with
+symlinks.
+
+<Callout type="info" title="Disk, host or peripheral?">
+| You want… | Use |
+|---|---|
+| Data that survives, portable in an `.img` | CeresFS (`disk`) |
+| To read assets you already have on the PC while developing | `host:` |
+| To simulate a cartridge or USB stick | Peripheral ports |
+</Callout>
+
+## An example: loading a level from the host
+
+```c title="load.c"
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    FILE* f = fopen("host:levels/level1.txt", "r");
+    if (!f) { perror("host:levels/level1.txt"); return 1; }
+
+    char line[128];
+    int rows = 0;
+    while (fgets(line, sizeof line, f))
+    {
+        printf("%2d | %s", ++rows, line);
+    }
+    fclose(f);
+    return 0;
+}
+```
+
+<Quiz question="What does host_list do with an entry that is a directory?"
+  options="It skips it|It returns its name ending in /|It returns -EISDIR|It lists it as a file"
+  answer="1"
+  explain="Entries are sorted by name and directories end in '/' so you can tell them apart."></Quiz>

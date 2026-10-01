@@ -1,0 +1,135 @@
+# Generics and attributes
+
+The compiler implements several modern C features that the library uses heavily.
+
+## `_Generic` (C11)
+
+Selects an expression based on the **type** of its argument. The library uses it to offer
+convenient APIs without one function per type.
+
+```c
+#define TYPE_OF(x) _Generic((x), \
+    int: "int", \
+    float: "float", \
+    char*: "string", \
+    default: "other")
+
+printf("%s\n", TYPE_OF(42));        // int
+printf("%s\n", TYPE_OF("hi"));      // string
+```
+
+`stdbit.h` uses it so `stdc_leading_zeros(x)` picks the 8-, 16-, 32- or 64-bit variant
+automatically.
+
+<Callout type="tip" title="It folds as a constant">
+A `_Generic` selection is a constant expression when the selected branch is, so it works in
+`_Static_assert`, in enumerators and in initializers.
+</Callout>
+
+## `_Static_assert`
+
+Checks something **at compile time** and, if it fails, shows a message. It costs nothing at
+run time.
+
+```c
+_Static_assert(sizeof(struct tm) == 36, "struct tm must be 9 words");
+_Static_assert(sizeof(long long) == 8, "");
+```
+
+It can go at file scope, in a block, or inside a `struct`.
+
+## Compound literals and designated initializers
+
+```c
+struct point { int x, y; };
+
+struct point p = { .y = 2, .x = 1 };            // designated
+int* v = (int[]){ 10, 20, 30 };                 // compound array literal
+draw((struct point){ .x = 5, .y = 5 });         // compound literal in a call
+```
+
+## Attributes
+
+`__attribute__((...))` goes where GCC would put it. These are the ones that actually do
+something:
+
+| Attribute | Effect |
+|---|---|
+| `noreturn` | The function does not return (like `exit`) |
+| `format(printf, i, j)` | Checks the format against the arguments (`W3005`/`W3006`) |
+| `pure` | No side effects (its result can be reused) |
+| `const` | Also reads no memory |
+| `noinline` / `always_inline` | Controls *inlining* |
+| `deprecated` | Warns on every use (`W3003`) |
+| `warn_unused_result` | Warns if the result is discarded (`W3004`) |
+| `aligned(N)` | Alignment up to 4; above that it is ignored with `W2002` |
+| `interrupt` | Interrupt handler function |
+
+Example:
+
+```c
+int my_printf(const char* fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+
+void fatal(const char* msg) __attribute__((noreturn));
+```
+
+<Callout type="info" title="The format is really checked">
+With `format(printf, i, j)` the compiler validates `%d`, `%lld`, `%s`, `%lc`, `%a`… against
+the argument types. On this machine, giving a `%lld` an `int` shifts every argument after
+it, so the `W3005` warning saves you from very subtle bugs.
+</Callout>
+
+## Assembly inside C
+
+```c
+void pause(void) { __asm__("nop"); }
+```
+
+And to link against a hand-written CASM function, change its symbol name:
+
+```c
+int fast_copy(int a) __asm__("hand_made");
+```
+
+## Interrupt handlers
+
+```c
+__interrupt void my_timer(void) { /* ... */ }
+__interrupt_vector(16, my_timer);     // vector 16 = IRQ_TIMER
+```
+
+A handler is not called from C: it is entered through the vector table. It runs on the
+**system stack** (4 KiB) with interrupts masked: it must be short and must not call
+`printf` or `malloc`. We cover it in depth in **Interrupts and faults**.
+
+## `volatile` and `restrict`
+
+```c
+volatile unsigned int* reg = (volatile unsigned int*)0xFF010000;
+int copy(int* restrict dst, const int* restrict src, int n);  // no overlap
+```
+
+`volatile` is mandatory for MMIO; `restrict` lets the compiler assume no overlap for direct
+accesses.
+
+## Anatomy of a well-used attribute
+
+```c
+#include "stdio.h"
+
+void register_name(const char* name)
+    __attribute__((nonnull(1)));     // accepted (though ignored today)
+
+__attribute__((noreturn))
+void die(const char* reason)
+{
+    fprintf(stderr, "fatal: %s\n", reason);
+    exit(1);
+}
+```
+
+<Quiz question="What is __attribute__((format(printf,1,2))) for?"
+  options="To speed up printf|So the compiler checks the format against the arguments|To print in colour|To allow more than 4 arguments"
+  answer="1"
+  explain="It emits W3005/W3006 if the format does not match the argument types."></Quiz>

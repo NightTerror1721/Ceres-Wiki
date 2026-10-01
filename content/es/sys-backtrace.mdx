@@ -1,0 +1,123 @@
+# Backtrace y depuración
+
+## Registro e inspección
+
+`ceres/debug.h` es para programas en desarrollo; todo va al terminal por `printf`, así que
+se mezcla en orden con la salida del programa.
+
+```c
+#include "ceres/debug.h"
+
+log_set_level(LOG_DEBUG);
+LOGE("algo fallo: %d", errno);
+LOGW("cuidado");
+LOGI("estado %s", nombre);
+LOGD("x=%d y=%d", x, y);
+
+dbg_hexdump(buffer, sizeof buffer);
+dbg_where();                    // sp, cima del heap y hueco entre ambos
+```
+
+### Medir pila
+
+```c
+dbg_stack_paint(4096);          // marca la pila no usada por debajo
+trabajo();
+unsigned int usado = dbg_stack_used();   // cuantos bytes llego a usar (high-water)
+```
+
+### Medir trabajo en instrucciones
+
+```c
+struct dbg_span s;
+dbg_span_begin(&s, "fisica");
+simular();
+dbg_span_end(&s);               // "fisica: 1234567 instructions"
+```
+
+Como el reloj es el contador de instrucciones, el número es **reproducible**: la misma
+medida en cada ejecución.
+
+## Backtrace
+
+`ceres/backtrace.h` recorre la pila de llamadas y (si el programa se enlazó con
+`--symtab`) da **nombres**: la función y el desplazamiento.
+
+```c
+#include "ceres/backtrace.h"
+
+unsigned int pcs[16];
+int n = backtrace(pcs, 16);
+for (int i = 0; i < n; i++)
+{
+    unsigned int off;
+    const char* fn = backtrace_symbol(pcs[i], &off);
+    printf("#%d %s+0x%x\n", i, fn ? fn : "?", off);
+}
+
+backtrace_print();              // "  #0 parse_line+0x1c" una por linea
+```
+
+Enlaza con `--symtab` para tener nombres:
+
+```shell
+> ceresc prog.c libceres.car --decls ... -I include -O1 --symtab --run
+```
+
+<Callout type="info" title="Sin printf ni heap">
+La caminata está escrita para poder usarse desde un **informe de fallo** en la pila del
+sistema: no llama a `printf` ni reserva memoria. Sin tabla de símbolos, imprime direcciones
+desnudas.
+</Callout>
+
+## Del fallo al código
+
+Con el módulo `fault` enlazado, un fallo te da la dirección, el acceso y el marco; combina
+con `backtrace_from`:
+
+```c
+// USE: fault
+#include "ceres/sys.h"
+#include "ceres/backtrace.h"
+#include "stdio.h"
+
+static void al_fallar(int irq, unsigned int pc, unsigned int flags)
+{
+    printf("fallo irq %d en pc %#x flags %#x\n", irq, pc, flags);
+    printf("datos %#x (%s)\n", sys_fault_address(),
+           (sys_fault_access() & 0xFF) == FAULT_WRITE ? "escritura" :
+           (sys_fault_access() & 0xFF) == FAULT_READ  ? "lectura" : "fetch");
+    backtrace_print_from(sys_fault_frame());
+}
+
+int main(void)
+{
+    sys_install_fault_handlers(al_fallar);
+    volatile int* p = (int*)1;      /* fallo de memoria */
+    *p = 5;
+    return 0;
+}
+```
+
+<Output title="Salida (con --symtab)">
+fallo irq 3 en pc 0x4A12C flags 0x...
+datos 0x00000001 (escritura)
+  #0 main+0x18
+</Output>
+
+## Reducirlo a una línea: `ceres disasm` y el depurador
+
+Fuera de la máquina, la herramienta `ceres` trae desensamblador y un **depurador** con
+ejecución inversa:
+
+```shell
+> ceres disasm prog.cres --debug       # CASM con tus lineas de origen
+> ceres debug prog.cres                # REPL: breakpoints, watchpoints, paso, backtrace...
+```
+
+Con `--debug` la dirección del fallo se puede traducir a `archivo:línea`.
+
+<Quiz question="¿Qué opción del compilador hace que el backtrace tenga nombres?"
+  options="--debug|-g|--symtab|-O2"
+  answer="2"
+  explain="--symtab enlaza una tabla de nombre/direccion que backtrace_symbol consulta."></Quiz>

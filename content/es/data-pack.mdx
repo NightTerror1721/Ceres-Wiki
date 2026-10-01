@@ -1,0 +1,110 @@
+# Packs de recursos
+
+Un **pack** mete todos los assets de un juego — imágenes, niveles, texto, música — en un
+solo fichero, que puede vivir en el disco, en un fichero del anfitrión o en un cartucho.
+Sólo el **directorio** se guarda en RAM: cada entrada se lee cuando se pide.
+
+## Construir un pack (en el anfitrión)
+
+```shell
+> node tools/mkpack.js juego.cart art/ niveles/ readme.txt
+```
+
+`mkpack.js` comprime cada entrada con LZ4, **verifica** descomprimiéndola, y sólo la guarda
+comprimida si de verdad ocupa menos. Rellena el fichero a sectores completos, así que se
+puede enchufar como cartucho.
+
+## Abrir un pack
+
+```c
+#include "ceres/pack.h"
+
+struct pack p;
+
+pack_open_port(&p, 1);                       // lo que hay en el puerto 1
+pack_open_file(&p, "host:juego.cart");       // cualquier ruta de fopen
+pack_open_memory(&p, datos, tam);            // un pack ya en memoria (no se copia)
+/* o: pack_open(&p, &blockdev); */
+
+int n = pack_count(&p);
+const struct pack_entry* e = pack_find(&p, "art/heroe.qoi");
+```
+
+## Leer entradas
+
+```c
+size_t tam;
+char* texto = pack_load(&p, "niveles/uno.txt", &tam);   // malloc'd, con NUL al final
+/* ... usar ... */
+free(texto);
+
+struct gfx_surface* heroe = pack_image(&p, "art/heroe.qoi", RGB(255,0,255));
+gfx_blit_key(heroe, 0, 0, heroe->w, heroe->h, 40, 30, RGB(255,0,255));
+image_free(heroe);
+
+pack_close(&p);
+```
+
+| Función | Devuelve |
+|---|---|
+| `pack_count` | Cuántas entradas |
+| `pack_entry_at(p, i)` | La entrada i (NULL fuera de rango) |
+| `pack_find(p, nombre)` | La entrada, o NULL (`ENOENT`) |
+| `pack_read(p, e, dst, cap)` | Tamaño, o `-1` |
+| `pack_load(p, nombre, &size)` | `malloc`'d, o NULL |
+| `pack_image(p, nombre, transparent)` | Una superficie, o NULL |
+
+<Callout type="info" title="El CRCs se comprueba al leer">
+Cada entrada guarda un CRC-32 de sus bytes. Al leer, si no cuadra, `pack_read` falla con
+`EIO`: un pack corrupto no pasa desapercibido.
+</Callout>
+
+## El formato (por si te apetece generarlo tú)
+
+Little-endian. Cabecera de 16 bytes: `"CPAK"`, versión (`u16`), número de entradas
+(`u16`), offset del directorio (`u32`), y un `u32` a cero. Cada entrada del directorio son
+48 bytes: nombre de hasta 31 caracteres (relleno a 32), offset, tamaño, bytes almacenados
+y CRC. Los datos, donde sea después. `PACK_NAME_MAX` es 31; el espacio de nombres es plano
+(`/` es un carácter más).
+
+## Ejemplo: cargar el nivel desde un cartucho
+
+```c title="juego.c"
+#include "stdio.h"
+#include "stdlib.h"
+#include "ceres/pack.h"
+#include "ceres/gfx.h"
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    struct pack p;
+    if (pack_open_port(&p, 1) != 0) { puts("no hay cartucho"); return 1; }
+
+    struct gfx_surface* fondo = pack_image(&p, "art/fondo.qoi", IMAGE_OPAQUE);
+    if (!fondo) { perror("art/fondo.qoi"); return 1; }
+
+    gfx_clear(0);
+    gfx_blit(fondo, 0, 0, fondo->w, fondo->h, 0, 0);
+    gfx_present();
+
+    image_free(fondo);
+    pack_close(&p);
+    gfx_shutdown();
+    return 0;
+}
+```
+
+Ejecútalo con `--cart 1=juego.cart`.
+
+<Callout type="tip" title="Por qué sólo el directorio en RAM">
+Un juego con 200 recursos no quiere reservar memoria para los 200 a la vez. El pack lee
+cada entrada bajo demanda con **un sector de caché**, así que puede llevar un cartucho
+grande con muy poca RAM.
+</Callout>
+
+<Quiz question="¿Qué se guarda en RAM de un pack abierto?"
+  options="Todas las entradas|Solo el directorio|Nada|El fichero entero comprimido"
+  answer="1"
+  explain="Solo el directorio; cada entrada se lee cuando se pide, con un sector de cache."></Quiz>

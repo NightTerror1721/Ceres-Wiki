@@ -1,0 +1,125 @@
+# Entrada de línea
+
+Leer con `getchar()` byte a byte es tedioso. `ceres/line.h` ofrece las operaciones de
+entrada que casi todo programa de consola necesita: una línea, un número, un sí/no y una
+elección numerada.
+
+## Leer una línea
+
+```c
+#include "ceres/line.h"
+
+char buf[128];
+int n = line_read(buf, sizeof buf);      // devuelve la longitud, o -1 al acabar la entrada
+printf("leí %d caracteres: %s\n", n, buf);
+```
+
+`line_read` **no** incluye el `\n` y siempre termina en NUL. Una línea más larga que el
+buffer se lee hasta el final y el sobrante se descarta; el resto de líneas quedan
+encoladas para la siguiente llamada.
+
+Con un mensaje por delante:
+
+```c
+char nombre[64];
+line_prompt("Nombre: ", nombre, sizeof nombre);
+```
+
+## Números y decisiones
+
+```c
+int   n;
+float f;
+
+if (read_int("¿Cuántos? ", &n) == 0)
+    printf("elegiste %d\n", n);
+
+if (read_float("¿Velocidad? ", &f) == 0)
+    printf("velocidad %.2f\n", f);
+
+int quiere = read_yes_no("¿Continuar?", 1);   // 1 = sí (por defecto), 0 = no
+
+const char* opciones[] = { "Nueva partida", "Cargar", "Salir" };
+int elegida = read_choice("Menú", opciones, 3);   // 1..3
+```
+
+`read_int` y `read_float` devuelven `0` y guardan el valor si la línea es un número
+completo; si no, `-1` y no tocan la variable. `read_yes_no` insiste hasta obtener `y`,
+`yes`, `n` o `no` (una línea vacía usa el valor por defecto). `read_choice` imprime las
+opciones numeradas y espera un número válido.
+
+<Callout type="info" title="La entrada es por líneas: se nota">
+El terminal del anfitrión entrega líneas: hasta que pulsas Enter no llega nada. Por eso
+estas funciones **esperan** una línea completa. Si el programa tiene otras cosas que
+hacer, usa `line_available()` para saber si hay algo, o `getchar_nb()` para no bloquear.
+</Callout>
+
+## Vaciar la entrada
+
+```c
+line_discard();          // tira todo lo que esté esperando
+int listo = line_available();   // bytes en cola (0 = leer bloquearía)
+```
+
+## Un menú de consola completo
+
+```c title="menu.c"
+#include "stdio.h"
+#include "ceres/line.h"
+
+static void jugar(void)  { puts("jugando…"); }
+static void cargar(void) { puts("cargando…"); }
+
+int main(void)
+{
+    for (;;)
+    {
+        const char* opciones[] = { "Jugar", "Cargar", "Salir" };
+        int elegida = read_choice("=== MI JUEGO ===", opciones, 3);
+
+        if (elegida < 0)  break;      // fin de la entrada
+        if (elegida == 3) break;
+
+        switch (elegida)
+        {
+        case 1: jugar();  break;
+        case 2: cargar(); break;
+        }
+    }
+    puts("adiós");
+    return 0;
+}
+```
+
+<Output title="sesión">
+=== MI JUEGO ===
+  1. Jugar
+  2. Cargar
+  3. Salir
+> 1
+jugando…
+</Output>
+
+<Callout type="warn" title="No mezcles read_choice con scanf sin vaciar">
+Ambos leen del mismo terminal. Un `scanf` puede dejar el `\n` en la cola; llama a
+`line_discard()` antes de volver a `read_choice` o `line_read` para empezar limpio.
+</Callout>
+
+## Leer sin esperar (juego en consola)
+
+Para un juego que no debe bloquearse en la entrada, `getchar_nb()` devuelve `-1` si no hay
+nada:
+
+```c
+int c = getchar_nb();
+if (c == 'q') running = 0;
+else if (c == 'a') x--;
+```
+
+Y para leer caracteres *mientras se pulsan* (flechas incluidas), `ceres/key.h` es la
+herramienta correcta: lo vemos en **Teclado, ratón y gamepad**.
+
+<Quiz question="¿Incluye line_read el salto de línea final en el buffer?"
+  options="Sí, siempre|No, lo deja fuera|Solo en Windows|Depende del buffer"
+  answer="1"
+  explain="line_read devuelve la línea sin el salto (un CRLF cuenta como uno solo) y termina en NUL."></Quiz>

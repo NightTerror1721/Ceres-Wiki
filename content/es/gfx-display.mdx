@@ -1,0 +1,110 @@
+# Display de píxeles
+
+El **display** es un framebuffer de píxeles RGB32 (`0x00RRGGBB`), hasta **1280×720**.
+Distinto del framebuffer de texto. Un fotograma se envía de una vez y el anfitrión lo
+muestra en una ventana (o se ignora si no hay ventana, así que el programa sigue siendo
+testeable).
+
+## Lo básico
+
+```c
+#include "ceres/display.h"
+
+display_size(320, 200);      // 0 si lo acepta (esto limpia)
+display_clear();             // pinta negro y rebobina el cursor
+display_put(RGB(255, 0, 0)); // un píxel desde el cursor
+display_show();              // presenta
+```
+
+`RGB(r,g,b)` empaqueta tres canales en un pixel. `display_width()` / `display_height()`
+consultan el tamaño.
+
+## Enviar un fotograma entero
+
+```c
+unsigned int* pixeles = /* w*h palabras */;
+display_blit(pixeles, 320, 200);   // ajusta el tamaño, limpia y envía en UNA transferencia
+display_show();
+```
+
+<Callout type="info" title="Sin vsync: tú marcas el ritmo">
+El display no sincroniza verticalmente. Con ventana, el anfitrión ejecuta la máquina a
+trozos de instrucciones y muestra el fotograma entre trozos. El ritmo lo pone **cuántas
+instrucciones gastas por fotograma**, por eso el bucle de juego acompaña.
+</Callout>
+
+## El modo indexado y el scroll
+
+Dos toques "retro": un pixel = **un byte** (índice a una paleta de 256 colores), y un
+desplazamiento que mueve lo presentado sin volver a dibujar.
+
+```c
+display_set_mode(DISP_MODE_INDEXED);      // 1 byte por pixel
+
+unsigned int paleta[256];
+for (int i = 0; i < 256; i++)
+    paleta[i] = color_hsv(i * 360 / 256, 255, 255);
+display_load_palette(paleta, 256);
+
+unsigned char indices[320 * 200];
+/* ... rellenar ... */
+display_blit8(indices, 320, 200);
+
+display_scroll(5, 0);      // el fondo se mueve 5 px a la izquierda
+```
+
+<Callout type="tip" title="Por qué importa">
+El modo indexado usa **un cuarto** de la memoria y, cambiando una entrada de la paleta,
+cambias el color en todos los píxeles que la usan de golpe. El scroll mueve un fondo
+estrellado o un mapa sin redibujarlo.
+</Callout>
+
+## Cómo lo usa `gfx`
+
+Para dibujo cómodo (líneas, círculos, sprites), usa **`gfx`**, que mantiene una superficie
+en RAM y la envía de una vez por ti:
+
+```c
+#include "ceres/gfx.h"
+
+gfx_init(320, 200);
+for (;;) {
+    gfx_clear(COL_BLACK);
+    gfx_circle_fill(160, 100, 20, COL_RED);
+    gfx_present();
+}
+```
+
+Lo vemos a fondo en **Dibujo 2D con gfx**.
+
+## Un patrón de prueba
+
+```c
+#include "stdio.h"
+#include "ceres/display.h"
+#include "ceres/color.h"
+
+int main(void)
+{
+    display_size(256, 192);
+    display_clear();
+    for (int y = 0; y < 192; y++)
+        for (int x = 0; x < 256; x++)
+            display_put(RGB(x, y, (x ^ y) & 255));
+    display_show();
+
+    getchar();     // espera una tecla para que no cierre al instante
+    return 0;
+}
+```
+
+<Callout type="warn" title="El bloque va antes de presentar">
+`display_blit` **no** presenta: limpia y envía el fotograma. Llama a `display_show()`
+después. Y el cursor de escritura secuencial sólo se rebobina con `display_clear` o con un
+cambio de tamaño.
+</Callout>
+
+<Quiz question="¿Qué formato tiene un píxel del display?"
+  options="0xAARRGGBB|0x00RRGGBB|Un byte de paleta siempre|0x00BBGGRR"
+  answer="1"
+  explain="En modo RGB32 es 0x00RRGGBB (el byte alto se ignora); en modo indexado es un byte de paleta."></Quiz>

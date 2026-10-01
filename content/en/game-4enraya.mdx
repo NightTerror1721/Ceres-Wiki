@@ -1,0 +1,220 @@
+# Connect Four
+
+A turn-based game with a computer that plays well. Here we will do it in the **text
+framebuffer** (with colour), but the logic is the same if you later move it to pixels.
+
+<GameDemo kind="connect4" title="Connect Four">
+Click a column (or press **1–7**) to drop your blue disc. The machine plays in orange.
+</GameDemo>
+
+## The board
+
+7 columns × 6 rows. We store the board and use **sentinels** to simplify the checks.
+
+```c title="connect4.c (state)"
+#include "stdio.h"
+#include "ceres/textfb.h"
+#include "ceres/key.h"
+#include "ceres/rand.h"
+
+#define COLS 7
+#define ROWS 6
+#define EMPTY 0
+#define PLAYER 1
+#define MACHINE 2
+
+static char board[ROWS][COLS];
+static int turn;          // 0 = player, 1 = machine
+static int winner;        // 0, or whoever won
+static int sel_col;       // highlighted column
+```
+
+## Dropping a disc
+
+```c
+static int drop(int col, int disc)
+{
+    for (int r = ROWS - 1; r >= 0; r--)
+        if (board[r][col] == EMPTY)
+        {
+            board[r][col] = (char)disc;
+            return r;
+        }
+    return -1;             // column full
+}
+```
+
+## Is there four in a row?
+
+We walk every cell and try the four directions.
+
+```c
+static int wins(int player)
+{
+    const int dx[] = { 1, 0, 1, 1 };
+    const int dy[] = { 0, 1, 1, -1 };
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            if (board[r][c] != player) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                int f = 1;
+                for (; f < 4; f++)
+                {
+                    int nr = r + dy[d] * f, nc = c + dx[d] * f;
+                    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
+                    if (board[nr][nc] != player) break;
+                }
+                if (f == 4) return 1;
+            }
+        }
+    return 0;
+}
+```
+
+## The machine
+
+A simple but surprisingly good heuristic:
+
+1. If it can **win**, it wins.
+2. If the opponent can win next, it **blocks**.
+3. Otherwise it plays in the centre (the best position).
+
+```c
+static int test(int col, int disc)
+{
+    int r = drop(col, disc);
+    int w = wins(disc);
+    board[r][col] = EMPTY;
+    return w;
+}
+
+static int machine_plays(void)
+{
+    const int order[COLS] = { 3, 2, 4, 1, 5, 0, 6 };   // centre first
+
+    for (int c = 0; c < COLS; c++)                     // win
+        if (board[0][order[c]] == EMPTY && test(order[c], MACHINE))
+            return order[c];
+    for (int c = 0; c < COLS; c++)                     // block
+        if (board[0][order[c]] == EMPTY && test(order[c], PLAYER))
+            return order[c];
+
+    for (int c = 0; c < COLS; c++)                     // otherwise, centre
+        if (board[0][order[c]] == EMPTY)
+            return order[c];
+    return -1;
+}
+```
+
+<Callout type="info" title="Improving it: minimax">
+This "win/block/centre" heuristic is enough to be fun. To make it unbeatable, implement
+**minimax with alpha-beta pruning** over `drop` and `wins`, limiting the depth. It fits
+comfortably in Ceres: the board is small.
+</Callout>
+
+## Drawing with colour
+
+```c
+static void draw(void)
+{
+    fb_clear(' ');
+
+    /* header with the highlighted column */
+    for (int c = 0; c < COLS; c++)
+        if (c == sel_col)
+            fb_put_attr(2 + c * 2, 0, 'v', FB_ATTR(FB_BRIGHT + FB_YELLOW, FB_BLACK));
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            char ch = board[r][c] == PLAYER ? 'O'
+                    : board[r][c] == MACHINE ? 'X' : '.';
+            unsigned char attr = 0;
+            if (board[r][c] == PLAYER)
+                attr = FB_ATTR(FB_BRIGHT + FB_CYAN, FB_BLACK);
+            else if (board[r][c] == MACHINE)
+                attr = FB_ATTR(FB_BRIGHT + FB_RED, FB_BLACK);
+            fb_put_attr(2 + c * 2, 2 + r, ch, attr);
+        }
+
+    const char* msg = winner == PLAYER ? "You win!" :
+                      winner == MACHINE ? "The machine wins" : "Your turn";
+    fb_printf(2, 9, "%s   (1-7 move, Enter drop, R restart)", msg);
+    fb_present();
+}
+```
+
+## The loop
+
+```c
+static void restart(void)
+{
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            board[r][c] = EMPTY;
+    turn = 0; winner = 0; sel_col = COLS / 2;
+}
+
+int main(void)
+{
+    if (fb_init(20, 12) != 0) return 1;
+    restart();
+    key_start();
+
+    for (;;)
+    {
+        draw();
+        int k = key_wait();
+        if (k == KEYC_ESC || k == 'q') break;
+        if (k == 'r') { restart(); continue; }
+
+        if (winner) continue;
+
+        if (turn == 0)
+        {
+            if (k == KEYC_LEFT || k == 'a')  sel_col = (sel_col + COLS - 1) % COLS;
+            if (k == KEYC_RIGHT || k == 'd') sel_col = (sel_col + 1) % COLS;
+            if (k >= '1' && k <= '7')        sel_col = k - '1';
+
+            if (k == KEYC_ENTER || k == ' ')
+            {
+                if (drop(sel_col, PLAYER) >= 0)
+                {
+                    if (wins(PLAYER)) winner = PLAYER;
+                    else turn = 1;
+                }
+            }
+        }
+
+        if (turn == 1 && !winner)
+        {
+            int c = machine_plays();
+            if (c >= 0)
+            {
+                drop(c, MACHINE);
+                if (wins(MACHINE)) winner = MACHINE;
+                else turn = 0;
+            }
+        }
+    }
+
+    key_stop();
+    fb_shutdown();
+    return 0;
+}
+```
+
+## Ideas to go on
+
+- **A draw**: if no disc fits, call it a tie.
+- **Difficulty levels**: the machine can miss on purpose with `rng_chance`.
+- **A pixel version**: swap `fb_*` for `gfx_circle_fill` and draw coloured discs.
+- **Sound**: `sfx_play` a different click for each disc.
+
+<Quiz question="What does the machine do if the player can win on the next move?"
+  options="Wins if it can|Blocks that cell|Plays the centre|Gives up"
+  answer="1"
+  explain="It first tries to win; if not, it blocks the opponent's threat; if not, it plays the centre."></Quiz>

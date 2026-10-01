@@ -1,0 +1,111 @@
+# Images and LZ4 compression
+
+## Images
+
+`ceres/image.h` loads images into surfaces (`gfx_surface`, `0x00RRGGBB`) and saves them.
+Two formats, told apart by their first bytes:
+
+| Format | What it supports |
+|---|---|
+| **QOI** | "Quite OK Image": lossless, small, single-pass decoding. The recommended one |
+| **BMP** | 1, 4, 8 bits with a palette; 16, 24, 32 (with or without bitfields); top- or bottom-up. Compressed ones (RLE/JPEG/PNG) are refused |
+
+```c
+#include "ceres/image.h"
+
+struct gfx_surface* hero = image_load("host:art/hero.qoi", RGB(255, 0, 255));
+if (!hero) { perror("hero.qoi"); return 1; }
+
+gfx_blit_key(hero, 0, 0, hero->w, hero->h, x, y, RGB(255, 0, 255));
+image_free(hero);
+```
+
+An image with no alpha: pixels with alpha < 128 become the `transparent` colour you choose
+(the one the sprite then keys out); the rest keep their colour. `IMAGE_OPAQUE`
+(`0xFFFFFFFF`) keeps every pixel's colour.
+
+```c
+/* from memory, not a file */
+enum image_format fmt = image_info(data, size, &w, &h);
+struct gfx_surface* s = image_decode(data, size, IMAGE_OPAQUE);
+```
+
+### Saving
+
+```c
+image_save(s, "host:screenshot.qoi");     // .bmp -> BMP, anything else QOI
+
+size_t size;
+void* bytes = image_encode_qoi(s, &size);  // malloc'd
+void* bmp   = image_encode_bmp(s, &size);
+free(bytes); free(bmp);
+```
+
+`IMAGE_MAX_SIDE` is 8192: a larger image is refused with `EINVAL`.
+
+<Callout type="info" title="Proof against hostile data">
+The decoders **never** read outside the bytes you give them. QOI checks that the input is at
+least `(w*h+61)/62` bytes before allocating, so a malicious file cannot ask for a huge
+amount of memory.
+</Callout>
+
+## LZ4
+
+`ceres/lz.h` compresses and decompresses LZ4. Decompression **needs no memory of its own**
+and runs at a few instructions per byte; compression is *greedy* (LZ4 "fast") and uses an
+internal 16 KiB table, so it cannot run from two places at once.
+
+```c
+#include "ceres/lz.h"
+
+char compressed[LZ4_BOUND(sizeof level)];
+int n = lz4_compress(level, sizeof level, compressed, sizeof compressed);
+
+char back[sizeof level];
+int m = lz4_decompress(compressed, n, back, sizeof back);
+if (m != (int)sizeof level) puts("corrupt");
+```
+
+| Function | Notes |
+|---|---|
+| `lz4_compress(src, n, dst, cap)` | Bytes written, or `-1` (`ENOSPC`) |
+| `lz4_decompress(src, n, dst, cap)` | Bytes written, or `-1` (`EINVAL`/`ENOSPC`) |
+| `lz4_frame_decompress(...)` | Reads the `.lz4` format of the command-line tool |
+| `lz4_frame_content_size(...)` | Size declared in the frame, or `-1` |
+| `lz4_bound(n)` | Upper bound on `lz4_compress`'s output |
+
+The **frame format** is the one the `lz4` tool writes (magic `0x184D2204`): blocks linked or
+independent, compressed or raw. Checksums are ignored when reading.
+
+## When to use each
+
+| Need | Tool |
+|---|---|
+| A sprite or background with transparency | QOI image + `transparent` |
+| A screenshot | `image_encode_qoi`/`_bmp` |
+| Resources for a cartridge | A pack (which already uses LZ4) |
+| Compress a single blob | `lz4_compress` |
+| Read a `.lz4` made elsewhere | `lz4_frame_decompress` |
+
+## An example: load art and compress a save
+
+```c
+/* art */
+struct gfx_surface* tiles = image_load("cart1:/art/tiles.qoi", RGB(255, 0, 255));
+
+/* compressed save */
+extern struct world w;
+char compressed[LZ4_BOUND(sizeof w)];
+int n = lz4_compress(&w, sizeof w, compressed, sizeof compressed);
+if (n > 0)
+{
+    FILE* f = fopen("save_lz4.bin", "wb");
+    fwrite(compressed, 1, n, f);
+    fclose(f);
+}
+```
+
+<Quiz question="Which image format is recommended?"
+  options="Compressed BMP|QOI|PNG|JPEG"
+  answer="1"
+  explain="QOI is lossless, small and single-pass; embedded PNG/JPEG are refused and so is RLE BMP."></Quiz>

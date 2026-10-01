@@ -1,0 +1,121 @@
+# Text user interfaces (TUI)
+
+`ceres/tui.h` is a small user interface **drawn into the text framebuffer**: windows with a
+title, labels, buttons, a progress bar, a scrolling list and a menu that reads keys.
+
+## Init and show
+
+```c
+#include "ceres/tui.h"
+
+if (tui_init(44, 16) != 0) return 1;   // columns, rows (uses fb_init inside)
+tui_clear();
+/* ... draw ... */
+tui_present();
+tui_shutdown();
+```
+
+Nothing here owns the screen: you can mix `tui_*` calls with `fb_*` calls.
+
+## Widgets
+
+```c
+tui_window(x, y, w, h, "Title");       // box with a title (w>=4, h>=2)
+tui_label(x, y, "text");               // label
+tui_label_center(x, y, w, "centered");
+tui_button(x, y, "[ OK ]", focused);
+tui_progress(x, y, w, percent);        // bar + " 42%"
+tui_status("bottom bar");              // the whole last row
+```
+
+## Lists
+
+```c
+const char* items[] = { "one", "two", "three", "four", "five" };
+int top = 0;
+top = tui_list(x, y, w, rows, items, 5, selected, top);
+```
+
+`tui_list` adjusts and returns the first row shown so the selection stays visible: save it
+and pass it back next time.
+
+## Menus that read keys
+
+```c
+const char* options[] = { "New game", "Load", "Options", "Quit" };
+int chosen = tui_menu(3, 4, "Main menu", options, 4);
+if (chosen < 0) { /* cancelled or end of input */ }
+```
+
+Menu keys: **w/k/up arrow** and **s/j/down arrow** move; **Home/End** go to the ends;
+**PageUp/PageDown** a screenful; **Enter/Space** choose; **q/Escape** or the end of input
+cancel. It redraws and shows on every key, and asks the host for keys as they are pressed
+(so the arrows work).
+
+<Callout type="info" title="The colour theme">
+The constants `TUI_FRAME`, `TUI_TITLE`, `TUI_SELECTED`, `TUI_BAR_FULL`, `TUI_BAR_EMPTY` and
+`TUI_STATUS` are `FB_ATTR` attributes. Change the look by drawing with `fb_set_attr()`
+first, or use them as a reference.
+</Callout>
+
+## Example: rock, paper, scissors
+
+```c title="rps.c"
+#include "stdio.h"
+#include "ceres/tui.h"
+#include "ceres/rand.h"
+
+static const char* const moves[3] = { "rock", "paper", "scissors" };
+
+static int judge(int p, int m)
+{
+    if (p == m) return 0;
+    return (p - m + 3) % 3 == 1 ? 1 : -1;   // 1 the player wins, -1 the machine
+}
+
+int main(void)
+{
+    if (tui_init(40, 12) != 0) return 1;
+
+    struct rng r;
+    rng_seed_entropy(&r);
+    int wins = 0, losses = 0, draws = 0;
+
+    for (;;)
+    {
+        tui_clear();
+        tui_window(1, 0, 38, 5, "Rock, paper, scissors");
+        tui_label_center(2, 2, 36, "your move");
+        tui_status("arrows: move   enter: choose   q: quit");
+        tui_present();
+
+        int p = tui_menu(3, 6, "Choose", moves, 3);
+        if (p < 0) break;
+
+        int m = rng_range(&r, 0, 2);
+        int res = judge(p, m);
+        if (res > 0) wins++; else if (res < 0) losses++; else draws++;
+
+        tui_clear();
+        tui_window(1, 1, 38, 6, "Result");
+        char line[48];
+        snprintf(line, sizeof line, "you %s   machine %s", moves[p], moves[m]);
+        tui_label_center(2, 3, 36, line);
+        tui_label_center(2, 4, 36, res > 0 ? "you win" : res < 0 ? "you lose" : "draw");
+        snprintf(line, sizeof line, "you %d   machine %d   draws %d", wins, losses, draws);
+        tui_label_center(2, 5, 36, line);
+        tui_present();
+
+        const char* const again[] = { "another round", "quit" };
+        if (tui_menu(3, 8, "Again?", again, 2) != 0) break;
+    }
+
+    tui_shutdown();
+    return 0;
+}
+```
+
+<Quiz question="What does tui_menu return when the user cancels with q?"
+  options="0|The index of the last option|-1|The character 'q'"
+  answer="2"
+  explain="It returns -1 on cancel or at the end of input; otherwise the chosen index."></Quiz>

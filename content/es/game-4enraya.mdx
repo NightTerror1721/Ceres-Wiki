@@ -1,0 +1,222 @@
+# 4 en raya
+
+Un juego por turnos con una máquina que juega bien. Aquí lo haremos en el **framebuffer de
+texto** (con color), pero la lógica es la misma si luego lo pasas a píxeles.
+
+<GameDemo kind="connect4" title="4 en raya">
+Haz clic en una columna (o pulsa **1–7**) para soltar tu ficha azul. La máquina juega en
+naranja.
+</GameDemo>
+
+## El tablero
+
+7 columnas × 6 filas. Guardamos el tablero y usamos **centinelas** para simplificar las
+comprobaciones.
+
+```c title="conecta4.c (estado)"
+#include "stdio.h"
+#include "ceres/textfb.h"
+#include "ceres/key.h"
+#include "ceres/rand.h"
+
+#define COLS 7
+#define ROWS 6
+#define VACIO 0
+#define JUGADOR 1
+#define MAQUINA 2
+
+static char tablero[ROWS][COLS];
+static int turno;          // 0 = jugador, 1 = maquina
+static int ganador;        // 0, o el que ha ganado
+static int col_sel;        // columna resaltada
+```
+
+## Dejar caer una ficha
+
+```c
+static int soltar(int col, int ficha)
+{
+    for (int r = ROWS - 1; r >= 0; r--)
+        if (tablero[r][col] == VACIO)
+        {
+            tablero[r][col] = (char)ficha;
+            return r;
+        }
+    return -1;             // columna llena
+}
+```
+
+## ¿Hay cuatro en raya?
+
+Recorremos cada celda y probamos las cuatro direcciones.
+
+```c
+static int gana(int jugador)
+{
+    const int dx[] = { 1, 0, 1, 1 };
+    const int dy[] = { 0, 1, 1, -1 };
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            if (tablero[r][c] != jugador) continue;
+            for (int d = 0; d < 4; d++)
+            {
+                int f = 1;
+                for (; f < 4; f++)
+                {
+                    int nr = r + dy[d] * f, nc = c + dx[d] * f;
+                    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) break;
+                    if (tablero[nr][nc] != jugador) break;
+                }
+                if (f == 4) return 1;
+            }
+        }
+    return 0;
+}
+```
+
+## La máquina
+
+Una heurística sencilla pero sorprendentemente buena:
+
+1. Si puede **ganar**, gana.
+2. Si el rival puede ganar en la siguiente, **bloquea**.
+3. Si no, juega en el centro (mejor posición).
+
+```c
+static int prueba(int col, int ficha)
+{
+    int r = soltar(col, ficha);
+    int g = gana(ficha);
+    tablero[r][col] = VACIO;
+    return g;
+}
+
+static int maquina_juega(void)
+{
+    const int orden[COLS] = { 3, 2, 4, 1, 5, 0, 6 };   // centro primero
+
+    for (int c = 0; c < COLS; c++)                     // ganar
+        if (tablero[0][orden[c]] == VACIO && prueba(orden[c], MAQUINA))
+            return orden[c];
+    for (int c = 0; c < COLS; c++)                     // bloquear
+        if (tablero[0][orden[c]] == VACIO && prueba(orden[c], JUGADOR))
+            return orden[c];
+
+    for (int c = 0; c < COLS; c++)                     // sino, centro
+        if (tablero[0][orden[c]] == VACIO)
+            return orden[c];
+    return -1;
+}
+```
+
+<Callout type="info" title="Mejorarlo: minimax">
+Esta heurística "gana/bloquea/centro" es suficiente para divertir. Para que sea imbatible,
+implementa **minimax con poda alfa-beta** sobre `soltuar` y `gana`, limitando la
+profundidad. Cabe de sobra en Ceres: el tablero es pequeño.
+</Callout>
+
+## Dibujar con color
+
+```c
+static void dibujar(void)
+{
+    fb_clear(' ');
+
+    /* cabecera con la columna resaltada */
+    for (int c = 0; c < COLS; c++)
+        if (c == col_sel)
+            fb_put_attr(2 + c * 2, 0, 'v', FB_ATTR(FB_BRIGHT + FB_YELLOW, FB_BLACK));
+
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+        {
+            char ch = tablero[r][c] == JUGADOR ? 'O'
+                    : tablero[r][c] == MAQUINA ? 'X' : '.';
+            unsigned char attr = 0;
+            if (tablero[r][c] == JUGADOR)
+                attr = FB_ATTR(FB_BRIGHT + FB_CYAN, FB_BLACK);
+            else if (tablero[r][c] == MAQUINA)
+                attr = FB_ATTR(FB_BRIGHT + FB_RED, FB_BLACK);
+            fb_put_attr(2 + c * 2, 2 + r, ch, attr);
+        }
+
+    const char* msg = ganador == JUGADOR ? "¡Ganas!" :
+                      ganador == MAQUINA ? "Gana la maquina" : "Tu turno";
+    fb_printf(2, 9, "%s   (1-7 mover, Enter soltar, R reiniciar)", msg);
+    fb_present();
+}
+```
+
+## El bucle
+
+```c
+static void reiniciar(void)
+{
+    for (int r = 0; r < ROWS; r++)
+        for (int c = 0; c < COLS; c++)
+            tablero[r][c] = VACIO;
+    turno = 0; ganador = 0; col_sel = COLS / 2;
+}
+
+int main(void)
+{
+    if (fb_init(20, 12) != 0) return 1;
+    reiniciar();
+    key_start();
+
+    for (;;)
+    {
+        dibujar();
+        int k = key_wait();
+        if (k == KEYC_ESC || k == 'q') break;
+        if (k == 'r') { reiniciar(); continue; }
+
+        if (ganador) continue;
+
+        if (turno == 0)
+        {
+            if (k == KEYC_LEFT || k == 'a')  col_sel = (col_sel + COLS - 1) % COLS;
+            if (k == KEYC_RIGHT || k == 'd') col_sel = (col_sel + 1) % COLS;
+            if (k >= '1' && k <= '7')        col_sel = k - '1';
+
+            if (k == KEYC_ENTER || k == ' ')
+            {
+                if (soltar(col_sel, JUGADOR) >= 0)
+                {
+                    if (gana(JUGADOR)) ganador = JUGADOR;
+                    else turno = 1;
+                }
+            }
+        }
+
+        if (turno == 1 && !ganador)
+        {
+            int c = maquina_juega();
+            if (c >= 0)
+            {
+                soltar(c, MAQUINA);
+                if (gana(MAQUINA)) ganador = MAQUINA;
+                else turno = 0;
+            }
+        }
+    }
+
+    key_stop();
+    fb_shutdown();
+    return 0;
+}
+```
+
+## Ideas para seguir
+
+- **Empate**: si no cabe ninguna ficha, declara tablas.
+- **Niveles de dificultad**: la máquina puede equivocarse a propósito con `rng_chance`.
+- **Versión en píxeles**: cambia `fb_*` por `gfx_circle_fill` y dibuja fichas de color.
+- **Sonido**: `sfx_play` un clic distinto para cada ficha.
+
+<Quiz question="¿Qué hace la máquina si el jugador puede ganar en la siguiente jugada?"
+  options="Gana si puede|Bloquea esa casilla|Juega al centro|Se rinde"
+  answer="1"
+  explain="Primero intenta ganar; si no, bloquea la amenaza del rival; si no, juega al centro."></Quiz>

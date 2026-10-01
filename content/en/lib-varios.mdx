@@ -1,0 +1,150 @@
+# Ctype, locale, signals and setjmp
+
+## `ctype.h`
+
+ASCII character classification, all `const` (no state):
+
+```c
+isalnum  isalpha  isblank  iscntrl  isdigit  isgraph
+islower  isprint  ispunct  isspace  isupper  isxdigit
+tolower  toupper
+isascii  toascii          // BSD extensions
+```
+
+```c
+for (const char* p = text; *p; p++)
+    if (isalpha((unsigned char)*p))
+        letters++;
+```
+
+<Callout type="warn" title="Pass unsigned char">
+As in C, if the `char` is negative, `isalpha(c)` receives a value outside the safe range.
+Convert with `(unsigned char)` unless you know the byte is ASCII.
+</Callout>
+
+## `errno.h`
+
+One global variable, with the usual POSIX codes.
+
+```c
+#include "errno.h"
+errno = 0;
+FILE* f = fopen("x", "r");
+if (!f && errno == ENOENT) puts("it does not exist");
+```
+
+| Code | Code | Code |
+|---|---|---|
+| `ENOENT` | `EACCES` | `ENOSPC` |
+| `ENODEV` | `EINVAL` | `EPIPE` |
+| `ENOMEM` | `EBUSY` | `EDEADLK` |
+| `EIO` | `EEXIST` | `ENOTSUP` |
+
+## `locale.h`
+
+Only the `"C"` locale exists (and `""`, `"POSIX"`, `"C.UTF-8"`). `localeconv()` describes its
+values (`decimal_point` is `"."`). There is nothing to configure: text is UTF-8 and
+`ctype.h` is ASCII.
+
+## `signal.h`
+
+Six signals, with important nuances depending on who raises them:
+
+| Signal | Source |
+|---|---|
+| `SIGABRT` | `abort()` or `raise(SIGABRT)` |
+| `SIGINT` | only `raise(SIGINT)` (there is no interrupt key) |
+| `SIGTERM` | only `raise(SIGTERM)` |
+| `SIGFPE` | Division by zero (if requested; see below) |
+| `SIGILL` | Illegal instruction |
+| `SIGSEGV` | Memory fault: store to `.text`/zero, misaligned access, exhausted stack… |
+
+```c
+#include "signal.h"
+
+static void on_abort(int sig) { puts("aborted"); }
+signal(SIGABRT, on_abort);
+abort();
+```
+
+<Callout type="warn" title="The hardware signals need the fault module">
+`SIGFPE`, `SIGILL` and `SIGSEGV` reach a handler only if you link the **`fault`** module and
+call `sys_install_fault_handlers(0)`. Without it, `signal()` rejects them with `ENOSYS`.
+It is all covered in **Interrupts and faults**.
+</Callout>
+
+## `setjmp.h` — non-local jumps
+
+Implemented in assembly against the compiler's fixed ABI.
+
+```c
+#include "setjmp.h"
+
+static jmp_buf env;
+
+static void in_trouble(void) { longjmp(env, 42); }
+
+int main(void)
+{
+    int code = setjmp(env);
+    if (code == 0)
+    {
+        puts("normal path");
+        in_trouble();
+    }
+    else
+        printf("we came back with %d\n", code);   // 42
+    return 0;
+}
+```
+
+<Callout type="danger" title="setjmp/longjmp rules">
+- A local variable that changes between `setjmp` and `longjmp` has an **indeterminate**
+  value unless it is `volatile`.
+- Do not call `longjmp` once the function that called `setjmp` has returned.
+- **Do not** `longjmp` out of an `__interrupt` handler: it would never execute `iret`.
+</Callout>
+
+## `assert.h`
+
+```c
+#include "assert.h"
+
+assert(lives > 0);        // if it fails: "file.c:12: main: assertion 'lives > 0' failed"
+static_assert(sizeof(int) == 4, "32-bit int");
+```
+
+Define `NDEBUG` to remove them all. `static_assert` is checked at compile time.
+
+## `stdbit.h` (C23)
+
+```c
+stdc_leading_zeros(x)     stdc_trailing_zeros(x)
+stdc_leading_ones(x)      stdc_trailing_ones(x)
+stdc_count_ones(x)        stdc_count_zeros(x)
+stdc_has_single_bit(x)    stdc_bit_width(x)
+stdc_bit_floor(x)         stdc_bit_ceil(x)
+stdc_first_leading_one(x) ...
+```
+
+It picks the variant from the argument's type, and underneath they are the machine's
+`clz`/`ctz`/`popcnt`.
+
+## `stdckdint.h` (C23)
+
+```c
+int r;
+unsigned long long r64;
+
+if (ckd_add(&r, a, b))     { /* overflows */ }
+if (ckd_sub(&r, a, b))     { /* overflows */ }
+if (ckd_mul(&r64, a, b))   { /* overflows */ }
+```
+
+It is exact for every type up to 64 bits. For the fast `int` case, use
+`__builtin_add_overflow`.
+
+<Quiz question="Why can you not use longjmp to leave an __interrupt handler?"
+  options="Because it does not compile|Because the handler would never execute iret and would leave interrupts masked|Because longjmp does not exist|Because it would consume the heap"
+  answer="1"
+  explain="A handler must end with iret; jumping out leaves the interrupt state off balance."></Quiz>

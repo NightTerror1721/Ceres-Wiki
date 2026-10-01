@@ -1,0 +1,122 @@
+# Compilar la máquina virtual (CeresASM)
+
+**CeresASM** es la máquina virtual: el procesador, los dispositivos, el ensamblador, el
+enlazador y el depurador. De aquí sale el ejecutable **`ceres`**, la herramienta con la que
+ensamblas, enlazas, ejecutas y depuras programas.
+
+<Callout type="info" title="El árbol de fuentes está en Ceres/">
+El repositorio `CeresASM` tiene la documentación en `docs/` y los fuentes en la
+subcarpeta **`Ceres/`**. `CMakePresets.json` y `CMakeLists.txt` están **dentro de
+`Ceres/`**, así que todos los comandos de CMake se ejecutan desde ahí.
+</Callout>
+
+## 1. Requisitos
+
+| Requisito | Detalle |
+|---|---|
+| **CMake** | 3.28 o superior |
+| **Compilador C++23** | MSVC (`cl`), GCC 15 o Clang 18 |
+| **Ninja** | Todos los presets usan el generador *Ninja Multi-Config* |
+| **SDL3** (opcional) | Solo para `run --window`. Si no está, CMake lo descarga con FetchContent (necesita `git` y red) |
+
+Sin SDL no hay **ninguna** dependencia externa. El ejecutable funciona en modo terminal para
+todo lo demás.
+
+<Callout type="tip" title="¿Necesitas ventana?">
+`--window` necesita una build con SDL. Si solo vas a ejecutar programas de consola o a probar
+el ensamblador, compila sin SDL: es más rápido y no descarga nada.
+</Callout>
+
+## 2. Configurar y compilar
+
+Desde la carpeta `Ceres/`:
+
+```shell title="Sin SDL (GCC)"
+> cd Ceres
+> cmake --preset gcc
+> cmake --build --preset gcc-debug
+```
+
+```shell title="Sin SDL (MSVC, desde un símbolo del sistema de VS)"
+> cd Ceres
+> cmake --preset msvc
+> cmake --build --preset msvc-release
+```
+
+```shell title="Con ventana (SDL + IPO)"
+> cmake --preset gcc-sdl-ipo
+> cmake --build --preset gcc-sdl-ipo-release
+```
+
+Los presets de configuración disponibles son:
+
+| Preset | Compilador | Carpeta |
+|---|---|---|
+| `msvc` / `msvc-ipo` | MSVC | `build/msvc` / `build/msvc-ipo` |
+| `ninja` | el del entorno | `build/ninja` |
+| `gcc` / `gcc-ipo` | `g++` | `build/gcc` / `build/gcc-ipo` |
+| `clang` / `clang-ipo` | `clang++` | `build/clang` / `build/clang-ipo` |
+| `msvc-sdl-ipo` / `ninja-sdl-ipo` / `gcc-sdl-ipo` | + SDL | `build/*-sdl-ipo` |
+
+Cada preset de configuración tiene presets de compilación (`<preset>-debug` y
+`<preset>-release`; los de SDL solo `-release`).
+
+## 3. Dónde queda el ejecutable
+
+```
+Ceres/build/<preset>/bin/<Debug|Release>/ceres.exe   (+ SDL3.dll si hay ventana)
+```
+
+Con SDL, **`SDL3.dll` queda junto al ejecutable**: si lo copias a otro sitio, llévate la DLL
+o ejecútalo desde esa carpeta.
+
+## 4. Opciones de CMake
+
+| Opción | Defecto | Qué hace |
+|---|---|---|
+| `CERES_BUILD_TESTS` | ON en el proyecto raíz | Compila las suites de test |
+| `CERES_ENABLE_SDL` | OFF | Dispositivo de ventana (descarga SDL3 si falta) |
+| `CERES_ENABLE_IPO` | OFF | Optimización entre módulos (LTO) en Release |
+| `CERES_ENABLE_ARCH_TUNING` | OFF | Ajusta a la CPU local (popcnt, bmi, AVX2) |
+| `CERES_WARNINGS_AS_ERRORS` | OFF | Convierte avisos en errores |
+| `CERES_PGO_GENERATE` / `CERES_PGO_USE` | OFF | PGO en dos pasadas (GCC/Clang) |
+
+Puedes añadir cualquiera a la línea de configuración:
+
+```shell
+> cmake --preset gcc -DCERES_ENABLE_ARCH_TUNING=ON
+```
+
+## 5. Cómo está organizado por dentro
+
+El ejecutable `ceres` enlaza varias bibliotecas estáticas:
+
+| Biblioteca | Contenido |
+|---|---|
+| `ceres::core` | Tipos, ISA (opcodes, registros, desensamblador), formatos `.cres`/debug/mapa |
+| `ceres::vm` | Memoria, registros, motor de ejecución, interrupciones, BIOS |
+| `ceres::asm` | Ensamblador, macros, expresiones, objetos `.cobj`, archivos `.car`, enlazador |
+| `ceres::devices` | Terminal, timer, disco, framebuffer, teclado, ratón, display, gamepad, audio, periféricos, HostFs, blitter, DMA |
+| `ceres::debug` | Sesión de depuración, ejecución inversa, evaluador de expresiones, servidor |
+| `ceres::driver` | Línea de órdenes y ejecución |
+| `ceres::sdl` | Backend de ventana (solo con `CERES_ENABLE_SDL`) |
+
+## 6. Probar que funciona
+
+```shell title="Tests"
+> ctest --preset gcc-debug
+```
+
+```shell title="Comprobar el ejecutable"
+> Ceres/build/gcc/bin/Debug/ceres --help
+```
+
+<Callout type="warn" title="`--help` sale con código 2">
+La herramienta `ceres` imprime la ayuda en **stderr** y termina con estado **2** (no 0). No
+hay opción `--version`. Es intencionado; no lo tomes por un error.
+</Callout>
+
+<Quiz question="¿Dónde está CMakePresets.json en el repositorio CeresASM?"
+  options="En la raíz del repo|Dentro de la carpeta Ceres/|En docs/|No existe"
+  answer="1"
+  explain="El árbol de fuentes es la subcarpeta Ceres/; los presets y CMakeLists viven ahí."></Quiz>

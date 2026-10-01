@@ -1,0 +1,104 @@
+# Sound: tones and tunes
+
+The audio device (`0xFF090000`) is a **tone generator**: a note with frequency, duration,
+volume and waveform. It does not play samples. It is a *beeper* with several timbres.
+
+## A tone
+
+```c
+#include "ceres/audio.h"
+
+audio_play(440, 200, 128, AUDIO_SQUARE);   // A, 200 ms, volume 128
+audio_wait();                              // wait for it to end
+```
+
+Waveforms:
+
+| Constant | Timbre |
+|---|---|
+| `AUDIO_SQUARE` | Square (the classic 8-bit one) |
+| `AUDIO_TRIANGLE` | Triangle |
+| `AUDIO_SAWTOOTH` | Sawtooth |
+| `AUDIO_SINE` | Sine |
+| `AUDIO_NOISE` | Noise (explosions) |
+
+## Control
+
+```c
+audio_stop();
+if (audio_busy()) { /* sounding */ }
+audio_beep();                 // short beep, 880 Hz 100 ms, returns at once
+audio_available();            // does the machine have the device?
+```
+
+<Callout type="info" title="Silent machine = happy program">
+Without speakers (a normal `ceres run` with no window), the machine is **silent and a tone
+is never busy**, so a program **does not wait** for speakers that are not there.
+`audio_wait()` returns at once. `audio_available()` tells you whether the device is there.
+</Callout>
+
+## A tone that signals when it ends
+
+If a tone runs its full duration, the machine raises interrupt **22** (`IRQ_AUDIO`). To hear
+about it without blocking:
+
+```c
+// USE: irq
+#include "ceres/audio.h"
+#include "ceres/irq.h"
+
+static volatile int done = 0;
+static void on_end(int irq) { (void)irq; done = 1; }
+
+int main(void)
+{
+    irq_attach(IRQ_AUDIO, on_end);
+    irq_enable();
+    audio_play(660, 300, 200, AUDIO_SQUARE);
+    while (!done) { /* ... keep doing things ... */ }
+    return 0;
+}
+```
+
+## Notes and tunes
+
+Notes are identified by **MIDI** number (60 = middle C, 69 = the A of 440 Hz).
+
+```c
+unsigned int hz = audio_note_hz(69);       // 440
+```
+
+A tune is an array of notes and rests (`note < 0`):
+
+```c title="fanfare.c"
+#include "ceres/audio.h"
+
+static const struct audio_note tune[] = {
+    { 60, 150 }, { 64, 150 }, { 67, 150 }, { 72, 400 }, { -1, 100 }, { 72, 300 },
+};
+
+int main(void)
+{
+    int n = sizeof tune / sizeof tune[0];
+    audio_play_tune(tune, n, 160, AUDIO_TRIANGLE);
+    return 0;
+}
+```
+
+<Callout type="tip" title="For real music, use ceres/music.h">
+`audio` is a single tone. If you want four simultaneous voices, envelopes and effects that
+do not block, the next page (**Four-channel music**) is what you are after.
+</Callout>
+
+## Game sound effects
+
+```c
+void sfx_jump(void)    { audio_play(880,  60, 180, AUDIO_SQUARE); }
+void sfx_coin(void)    { audio_play(1320, 80, 180, AUDIO_TRIANGLE); }
+void sfx_boom(void)    { audio_play(120, 200, 220, AUDIO_NOISE); }
+```
+
+<Quiz question="What happens with audio_wait() on a machine with no speakers?"
+  options="It hangs|It returns at once|It returns an error|It sounds the same"
+  answer="1"
+  explain="With no host to play it, the tone is never busy and the wait does not block."></Quiz>

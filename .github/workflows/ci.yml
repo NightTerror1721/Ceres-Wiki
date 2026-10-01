@@ -1,0 +1,21 @@
+name: wiki
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Render de todas las paginas + lint de contenido (terminos v1, paridad es/en, enlaces).
+      - name: selfcheck
+        run: node tools/selfcheck.js
+      # Exportacion estatica: prueba que el generador no falla.
+      - name: build
+        run: node tools/build.js

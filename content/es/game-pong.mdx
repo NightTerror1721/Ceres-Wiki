@@ -1,0 +1,261 @@
+# Pong paso a paso
+
+Vamos a construir Pong, el "hola mundo" de los juegos. Este es el resultado; puedes jugarlo:
+
+<GameDemo kind="pong" title="Pong">
+Mueve tu paleta con el **ratón** o con **W/S**. El rival juega solo. El botón **Pausa**
+detiene la bola.
+</GameDemo>
+
+## Qué necesitamos
+
+| Módulo | Para qué |
+|---|---|
+| `ceres/gfx.h` | Dibujar paletas y bola |
+| `ceres/color.h` | Colores |
+| `ceres/font.h` | El marcador |
+| `ceres/input.h` | Teclado |
+| `ceres/game.h` | El bucle |
+| `ceres/fixed.h` | Punto fijo para una física repetible |
+
+## Paso 1: el esqueleto
+
+```c title="pong.c (esqueleto)"
+// USE: irq
+#include "stdio.h"
+#include "ceres/gfx.h"
+#include "ceres/color.h"
+#include "ceres/font.h"
+#include "ceres/game.h"
+#include "ceres/input.h"
+#include "ceres/fixed.h"
+#include "ceres/rand.h"
+
+#define W 320
+#define H 200
+
+int main(void)
+{
+    if (gfx_init(W, H) != 0) { puts("sin pantalla"); return 1; }
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);           // ~60 FPS
+    input_terminal_fallback(1);     // tambien en un terminal
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+        /* ...actualizar y dibujar... */
+        gfx_present();
+        game_frame_end(&g);
+    }
+
+    gfx_shutdown();
+    return 0;
+}
+```
+
+## Paso 2: el estado
+
+La bola y las velocidades en **punto fijo 16.16** (`fixed_t`), para que la física sea
+exacta y reproducible.
+
+```c
+#define PADDLE_W 6
+#define PADDLE_H 40
+#define BALL 6
+#define LEFT_X 10
+#define RIGHT_X (W - 10 - PADDLE_W)
+#define WIN_SCORE 5
+
+static int left_y, right_y;
+static fixed_t ball_x, ball_y, ball_vx, ball_vy;
+static int score_l, score_r, over;
+static struct rng rng;
+
+static void serve(int dir)
+{
+    ball_x = FIX_INT(W / 2 - BALL / 2);
+    ball_y = FIX_INT(H / 2 - BALL / 2);
+    ball_vx = FIX_INT(3) * dir;
+    int v = rng_range(&rng, 1, 2);
+    ball_vy = FIX_INT(rng_chance(&rng, 50) ? v : -v);
+}
+
+static void new_match(void)
+{
+    left_y = right_y = H / 2 - PADDLE_H / 2;
+    score_l = score_r = 0;
+    over = 0;
+    rng_seed(&rng, 2026);
+    serve(1);
+}
+```
+
+<Callout type="info" title="¿Por qué punto fijo y no float?">
+Un `float` funciona, pero 16.16 da **números exactos y repetibles**: la misma partida se
+desarrolla igual en cada ejecución y a cualquier nivel de optimización. Es la misma razón
+por la que los tests de la librería son byte a byte.
+</Callout>
+
+## Paso 3: mover la bola
+
+Rebotar en los bordes, en las paletas, y decidir el ángulo según dónde da:
+
+```c
+static int step_ball(void)
+{
+    ball_x += ball_vx;
+    ball_y += ball_vy;
+
+    int y = FIX_TO_INT(ball_y);
+    if (y < 0)                    { ball_y = -ball_y; ball_vy = -ball_vy; }
+    else if (y + BALL > H)        { ball_y = FIX_INT(2 * (H - BALL)) - ball_y; ball_vy = -ball_vy; }
+
+    struct rect b  = { FIX_TO_INT(ball_x), FIX_TO_INT(ball_y), BALL, BALL };
+    struct rect pl = { LEFT_X, left_y, PADDLE_W, PADDLE_H };
+    struct rect pr = { RIGHT_X, right_y, PADDLE_W, PADDLE_H };
+
+    if (ball_vx < 0 && rect_overlap(&b, &pl))
+    {
+        ball_vx = -fx_mul(ball_vx, FIX(1.06f));      // 6% mas rapido
+        ball_vy = fx_div(FIX_INT(FIX_TO_INT(ball_y) - (left_y + PADDLE_H / 2)), FIX_INT(9));
+        ball_x = FIX_INT(LEFT_X + PADDLE_W);
+    }
+    else if (ball_vx > 0 && rect_overlap(&b, &pr))
+    {
+        ball_vx = -fx_mul(ball_vx, FIX(1.06f));
+        ball_vy = fx_div(FIX_INT(FIX_TO_INT(ball_y) - (right_y + PADDLE_H / 2)), FIX_INT(9));
+        ball_x = FIX_INT(RIGHT_X - BALL);
+    }
+
+    if (FIX_TO_INT(ball_x) + BALL < 0) return -1;    // punto para la derecha
+    if (FIX_TO_INT(ball_x) > W)        return 1;     // punto para la izquierda
+    return 0;
+}
+```
+
+## Paso 4: el rival
+
+Un jugador de ordenador sencillo: sigue la bola con un pequeño retardo.
+
+```c
+static void ai(void)
+{
+    int objetivo = FIX_TO_INT(ball_y) + BALL / 2 - PADDLE_H / 2;
+    if (objetivo < right_y)      right_y -= 2;
+    else if (objetivo > right_y) right_y += 2;
+
+    if (right_y < 0)                 right_y = 0;
+    if (right_y > H - PADDLE_H)      right_y = H - PADDLE_H;
+}
+```
+
+## Paso 5: dibujar
+
+```c
+static int clamp_paddle(int y)
+{
+    if (y < 0) return 0;
+    if (y > H - PADDLE_H) return H - PADDLE_H;
+    return y;
+}
+
+static void draw(void)
+{
+    gfx_clear(RGB(0, 0, 0));
+
+    for (int y = 4; y < H; y += 12)                    // red discontinua
+        gfx_rect_fill(W / 2 - 1, y, 2, 6, RGB(70, 70, 70));
+
+    gfx_rect_fill(LEFT_X, left_y, PADDLE_W, PADDLE_H, RGB(230, 230, 230));
+    gfx_rect_fill(RIGHT_X, right_y, PADDLE_W, PADDLE_H, RGB(230, 230, 230));
+    gfx_rect_fill(FIX_TO_INT(ball_x), FIX_TO_INT(ball_y), BALL, BALL, RGB(255, 220, 90));
+
+    font_printf(NULL, W / 2 - 48, 8, RGB(160, 160, 160), 4, "%d", score_l);
+    font_printf(NULL, W / 2 + 24, 8, RGB(160, 160, 160), 4, "%d", score_r);
+
+    if (over)
+    {
+        gfx_rect_fill(70, 80, 180, 40, RGB(0, 0, 0));
+        gfx_rect(70, 80, 180, 40, RGB(200, 200, 200));
+        font_text(NULL, 96, 88, score_l > score_r ? "GANAS" : "PIERDES", RGB(255, 220, 90), 2);
+        font_text(NULL, 106, 108, "Enter: otra", RGB(200, 200, 200), 1);
+    }
+    gfx_present();
+}
+```
+
+## Paso 6: el bucle completo
+
+```c
+int main(void)
+{
+    if (gfx_init(W, H) != 0) return 1;
+    new_match();
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);
+    input_terminal_fallback(1);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+
+        if (over)
+        {
+            if (key_pressed(KEY_ENTER)) new_match();
+        }
+        else
+        {
+            int move = 0;
+            if (key_down(KEY_W) || key_down(KEY_UP))   move -= 3;
+            if (key_down(KEY_S) || key_down(KEY_DOWN)) move += 3;
+            left_y = clamp_paddle(left_y + move);
+
+            /* mouse: la posicion vertical del puntero */
+            left_y = clamp_paddle(mouse_pos_y() - PADDLE_H / 2);
+
+            ai();
+
+            int scored = step_ball();
+            if (scored != 0)
+            {
+                if (scored > 0) score_l++; else score_r++;
+                if (score_l == WIN_SCORE || score_r == WIN_SCORE) over = 1;
+                else serve(scored > 0 ? -1 : 1);
+            }
+        }
+
+        draw();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+## Ideas para seguir
+
+- **Sonido**: `sfx_play` al rebotar y al marcar (mira **Música de 4 canales**).
+- **Dos jugadores**: el segundo con `W/S` y el primero con flechas.
+- **Power-ups**: al golpear, a veces alargar la paleta unos segundos.
+- **Partida guardada**: guarda el marcador con `ceres/save.h`.
+
+<Callout type="tip" title="Compilar y jugar">
+```shell
+> tools\example.ps1 pong           # con ventana
+> tools\example.ps1 pong -Terminal
+```
+El ejemplo real de la librería (`examples/pong.c`) añade un modo `-DDEMO_FRAMES` que juega
+solo y deja un registro reproducible, que es como se testea.
+</Callout>
+
+<Quiz question="¿Por qué el ejemplo usa fixed_t en vez de float?"
+  options="Porque float no existe|Para que la fisica sea exacta y repetible|Porque es mas rapido|Porque el display no acepta float"
+  answer="1"
+  explain="16.16 da numeros exactos: la partida se desarrolla igual en cada ejecucion y en cada nivel de optimizacion."></Quiz>

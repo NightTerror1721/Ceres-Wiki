@@ -1,0 +1,137 @@
+# Sprites, animación y tilemaps
+
+`ceres/sprite.h` da lo que todo juego 2D necesita: imágenes con transparencia, animación
+por fotogramas, mapas de baldosas con cámara y las pruebas de rectángulos para colisiones.
+
+## Sprites
+
+Un sprite **apunta** a los píxeles: no los copia, así que puede vivir en `.rodata`.
+
+```c
+#include "ceres/sprite.h"
+
+static const unsigned int heroe_px[8 * 8] = { /* ... 64 pixeles ... */ };
+static const struct sprite heroe = {
+    .w = 8, .h = 8, .px = heroe_px, .key = 0xFF00FF   // magenta = transparente
+};
+
+sprite_draw(&heroe, x, y);
+sprite_draw_flip(&heroe, x, y, 1, 0);      // espejo horizontal
+sprite_draw_scaled(&heroe, x, y, 3);       // cada pixel 3x3
+```
+
+## Animación por fotogramas
+
+```c
+static const struct sprite* const caminar[] = { &f1, &f2, &f3, &f4 };
+
+struct anim a;
+anim_init(&a, caminar, 4, 8);     // 4 fotogramas, 8 ticks cada uno
+
+/* cada fotograma del juego */
+anim_update(&a, ticks_transcurridos);   // avanza y da la vuelta al final
+const struct sprite* s = anim_frame(&a);
+sprite_draw(s, x, y);
+```
+
+`ticks_per_frame <= 0` congela la animación. `anim_reset(&a)` vuelve al primero.
+
+## Tilemaps con cámara
+
+```c
+static const unsigned char nivel[] = {
+    0,0,1,1,0,
+    0,1,0,0,1,
+};
+static const struct sprite* const tileset[] = { &hierba, &muro };
+
+static const struct tilemap mapa = {
+    .tile_w = 16, .tile_h = 16,
+    .cols = 5, .rows = 2,
+    .tiles = nivel,
+    .tileset = tileset
+};
+
+tilemap_draw(&mapa, cam_x, cam_y);       // sólo dibuja las baldosas visibles
+int t = tilemap_at(&mapa, px, py);       // baldosa en un pixel del mapa (-1 fuera)
+int t2 = tilemap_tile(&mapa, col, fila); // baldosa en una celda
+```
+
+<Callout type="info" title="La cámara es gratis">
+`tilemap_draw` recibe la posición del mapa que quieres en la esquina superior izquierda y
+dibuja **sólo** las baldosas que caen en pantalla. El scroll sale de mover `cam_x`/`cam_y`.
+</Callout>
+
+## Colisiones
+
+```c
+struct rect jugador = { x, y, 16, 16 };
+struct rect muro    = { 64, 0, 16, 32 };
+
+if (rect_overlap(&jugador, &muro))
+    resolver_choque();
+
+if (rect_contains(&muro, mouse_x, mouse_y))
+    puts("clic en el muro");
+```
+
+`rect_overlap` considera choque si comparten **al menos un píxel** (tocar los bordes no
+cuenta).
+
+## Ejemplo: mover un sprite con colisiones de tilemap
+
+```c title="caminar.c"
+// USE: irq
+#include "stdio.h"
+#include "ceres/gfx.h"
+#include "ceres/sprite.h"
+#include "ceres/game.h"
+#include "ceres/input.h"
+
+static unsigned int bloque(int color)
+{
+    (void)color; return 0;
+}
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 33);
+    input_terminal_fallback(1);
+
+    int x = 40, y = 40;
+    const int V = 3;
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_down(KEY_ESCAPE)) game_quit(&g);
+
+        int dx = 0, dy = 0;
+        if (key_down(KEY_LEFT))  dx -= V;
+        if (key_down(KEY_RIGHT)) dx += V;
+        if (key_down(KEY_UP))    dy -= V;
+        if (key_down(KEY_DOWN))  dy += V;
+
+        struct rect nuevo = { x + dx, y + dy, 16, 16 };
+        /* en un juego real: comprobar el tilemap bajo las cuatro esquinas */
+        x += dx; y += dy;
+
+        gfx_clear(RGB(24, 30, 44));
+        gfx_rect_fill(64, 0, 16, 32, RGB(90, 100, 120));
+        gfx_rect_fill(x, y, 16, 16, RGB(109, 148, 255));
+        gfx_present();
+        game_frame_end(&g);
+    }
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Quiz question="¿Qué valor de `key` en un sprite hace de color transparente?"
+  options="0|El color de fondo|El indicado en el campo key|Cualquiera con alfa 0"
+  answer="2"
+  explain="Las superficies no tienen alfa; el campo key dice qué color se salta al dibujar."></Quiz>

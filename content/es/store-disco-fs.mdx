@@ -1,0 +1,137 @@
+# El disco y CeresFS
+
+La máquina tiene un disco de **sectores de 512 bytes**. Sobre él, la librería monta
+**CeresFS**, un sistema de ficheros con FAT que hace real `fopen`.
+
+## Formatear y montar
+
+```c
+#include "ceres/fs.h"
+
+if (fs_mount() != 0)          // ¿ya hay un CeresFS?
+    if (fs_format() != 0)     // no: formatéalo (versión 2, con directorios)
+    {
+        perror("disco");
+        return 1;
+    }
+```
+
+Sin un CeresFS, `fopen` falla con `ENODEV`. Con `ceres run prog.cres --disk image.img`
+el disco es un fichero del anfitrión y **los datos sobreviven** entre ejecuciones; sin él,
+el disco (64 sectores = 32 KiB) vive solo mientras corre el programa.
+
+## Ficheros
+
+```c
+int fd = fs_open("partida.dat", FS_O_CREAT | FS_O_RDWR);
+fs_write(fd, datos, sizeof datos);
+fs_seek(fd, 0, FS_SEEK_SET);
+fs_read(fd, buffer, sizeof buffer);
+fs_close(fd);
+
+fs_remove("viejo.dat");
+fs_rename("tmp.dat", "final.dat");
+
+struct fs_stat st;
+fs_stat("final.dat", &st);
+printf("%u bytes, modificado %u\n", st.size, st.mtime);
+```
+
+<Callout type="info" title="CeresFS siempre por debajo de fopen">
+`fopen`, `fprintf`, `fgets`… **son CeresFS**. La API `fs_*` es la capa directa; el
+`stdio` es la cómoda. Usa la que prefieras: son el mismo disco.
+</Callout>
+
+## Directorios (versión 2)
+
+```c
+fs_mkdir("saves");
+int fd = fs_open("saves/slot1.dat", FS_O_CREAT | FS_O_RDWR);
+```
+
+Nombres de hasta **47** caracteres, `/` separa las partes, `.` y `..` funcionan. Recorrer
+un directorio:
+
+```c
+struct fs_dir dir;
+if (fs_opendir("saves", &dir) == 0)
+{
+    struct fs_dirent* e;
+    while ((e = fs_readdir(&dir)) != NULL)
+        printf("%-20s %6u %s\n", e->name, e->size, e->is_dir ? "<dir>" : "");
+    fs_closedir(&dir);
+}
+```
+
+En la versión 1 (los discos antiguos) no hay directorios, los nombres son de 23 caracteres
+y `fs_mkdir` falla con `ENOTSUP`.
+
+## Varios volúmenes a la vez
+
+Puedes montar hasta **5** volúmenes: el disco y lo que haya en los puertos periféricos.
+Cada uno tiene un nombre (`disk`, `stick0`, `cart1`, o el que elijas), y las rutas lo
+llevan delante.
+
+```c
+fs_mount_port(0);                              // "stick0" o "cart0"
+FILE* f = fopen("stick0:/saves/partida.dat", "r");
+f = fopen("disk:/config.ini", "w");            // "disk" es el disco interno
+fs_unmount_point("stick0");
+```
+
+Una ruta sin prefijo (`"config.ini"`) se entiende en `disk`, así que los programas de un
+solo disco siguen funcionando.
+
+## Sincronizar y comprobar
+
+```c
+fs_sync();                       // vuelca FAT, directorios y ficheros al dispositivo
+fs_flush();                      // igual, para un volumen concreto
+unsigned int total = fs_total_bytes();
+unsigned int libre = fs_free_bytes();
+```
+
+<Callout type="warn" title="No hay journal">
+Un parón a mitad de una escritura puede dejar el volumen inconsistente. `fs_check` lo
+encuentra y, con reparación, lo arregla:
+
+```c
+struct fs_check_report r;
+if (fs_check("disk", 0, &r) != 0)
+{
+    printf("%u huerfanos, %u enlazados\n", r.lost_clusters, r.cross_linked);
+    fs_check("disk", 1, &r);      // repara (sin ficheros abiertos)
+}
+```
+</Callout>
+
+## Ejemplo: un contador persistente
+
+```c title="contador.c"
+#include "stdio.h"
+#include "ceres/fs.h"
+
+int main(void)
+{
+    if (fs_mount() != 0 && fs_format() != 0) { perror("disco"); return 1; }
+
+    int veces = 0;
+    FILE* f = fopen("contador.txt", "r");
+    if (f) { fscanf(f, "%d", &veces); fclose(f); }
+
+    veces++;
+    f = fopen("contador.txt", "w");
+    fprintf(f, "%d\n", veces);
+    fclose(f);                 // cerrar vuelca al disco
+
+    printf("este programa se ha ejecutado %d veces\n", veces);
+    return 0;
+}
+```
+
+Ejecútalo con `--disk demo.img` y verás el contador subir.
+
+<Quiz question="¿Qué error da fopen si el disco no tiene un CeresFS?"
+  options="ENOENT|ENODEV|EACCES|EIO"
+  answer="1"
+  explain="ENODEV: no hay dispositivo/FS montado. Hay que llamar a fs_format o fs_mount."></Quiz>

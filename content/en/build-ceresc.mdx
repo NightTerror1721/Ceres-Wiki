@@ -1,0 +1,111 @@
+# Building the compiler (Ceres-C)
+
+**Ceres-C** is the compiler that turns C (a subset) into readable CeresASM assembly. The
+**`ceresc`** executable comes from here — the tool that preprocesses, compiles, assembles,
+links and (with `--run`) runs.
+
+## 1. Requirements
+
+| Requirement | Detail |
+|---|---|
+| **CMake** | 3.28 or newer |
+| **C++23 compiler** | MSVC, GCC 15 or Clang 18 |
+| **Ninja** | Every preset uses *Ninja Multi-Config* |
+| **Dependencies** | **None**: no third parties, no package manager, no generated sources |
+
+<Callout type="tip" title="Ceres-C does not need CeresASM to compile">
+Compiling to `.casm` does not depend on the virtual machine. You only need a `ceres` (from
+CeresASM) when you use `--run` or want to run the end-to-end tests.
+</Callout>
+
+## 2. Configure and build
+
+From the repository root:
+
+```shell title="GCC"
+> cmake --preset gcc
+> cmake --build --preset gcc-debug
+```
+
+```shell title="MSVC (from a VS developer prompt)"
+> cmake --preset msvc
+> cmake --build --preset msvc-release
+```
+
+Configure presets: `msvc`/`msvc-ipo`, `ninja`, `gcc`/`gcc-ipo`, `clang`/`clang-ipo`. Each has
+`-debug` and `-release` build presets:
+
+```shell
+> cmake --build --preset gcc-release
+> cmake --build --preset clang-ipo-release
+```
+
+CI builds with warnings as errors and a pinned compiler:
+
+```shell
+> cmake --preset gcc -DCMAKE_CXX_COMPILER=g++-15 -DCERESC_WARNINGS_AS_ERRORS=ON
+> cmake --build --preset gcc-debug
+```
+
+## 3. Where `ceresc` lands
+
+```
+build/<preset>/bin/<Debug|Release>/ceresc.exe
+```
+
+For example: `build/gcc/bin/Debug/ceresc` (Linux) or `build/msvc/bin/Release/ceresc.exe`
+(Windows). Static libraries go to `build/<preset>/lib/`.
+
+## 4. CMake options
+
+| Option | Default | What it does |
+|---|---|---|
+| `CERESC_BUILD_TESTS` | ON in the root project | Builds the test suites |
+| `CERESC_WARNINGS_AS_ERRORS` | OFF | Turns warnings into errors |
+| `CERESC_ENABLE_IPO` | OFF | Link-time optimization in Release |
+
+## 5. How it is organized inside
+
+The compiler is several static libraries in a chain, plus the application:
+
+| Library | Contents |
+|---|---|
+| `ceresc::support` | Base utilities, diagnostics, optimization options |
+| `ceresc::preprocessor` | `#include`, macros, conditionals |
+| `ceresc::lexer` | Tokenizer |
+| `ceresc::ast` | Syntax tree and types |
+| `ceresc::parser` | Parser |
+| `ceresc::sema` | Semantic analysis and type checking |
+| `ceresc::ir` | Intermediate representation and optimizer |
+| `ceresc::codegen` | CASM generation |
+| `ceresc::driver` | Orchestration of the whole pipeline |
+| **`ceresc`** | The application (`apps/ceresc`) |
+
+## 6. Prove it works
+
+```shell title="Tests"
+> ctest --preset gcc-debug
+```
+
+`ceresc --version` and `ceresc --help` need no input file (they exit with status 0):
+
+```shell
+> build/gcc/bin/Debug/ceresc --version
+ceresc 0.1.0
+```
+
+<Callout type="info" title="The end-to-end tests need a ceres">
+The `e2e` and `examples` suites compile **and run** programs, so they need a `ceres`. They
+skip (not fail) when they cannot find one. You can point them at it:
+
+```shell
+> CERESC_CERES_PATH=../CeresASM/Ceres/build/gcc/bin/Release ctest --preset gcc-debug
+```
+
+The variable is a **directory** holding `ceres`/`ceres.exe`.
+</Callout>
+
+<Quiz question="What do you need to compile to .casm with ceresc?"
+  options="ceres (CeresASM) mandatorily|Only ceresc itself|An external linker|Python"
+  answer="1"
+  explain="Compiling to assembly does not depend on the VM; ceres is only needed for --run and the e2e tests."></Quiz>

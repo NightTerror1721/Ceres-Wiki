@@ -1,0 +1,86 @@
+# Partidas a prueba de fallos
+
+Guardar una partida y que se corte la luz a mitad no debería dejarte sin partida.
+`ceres/save.h` lo evita con **dos copias alternas** y *checksums*.
+
+## Cómo funciona
+
+Una partida en `slot1` son **dos ficheros**: `slot1.a` y `slot1.b`. Cada escritura va a la
+copia que **no** tiene la versión buena más nueva, con un número de secuencia y un CRC-32.
+Si el parón ocurre a mitad, la otra copia sigue teniendo la partida anterior. Al leer, se
+toma la copia más nueva cuyo *header* y CRC cuadren.
+
+## Usar
+
+```c
+#include "ceres/save.h"
+
+struct progreso { int nivel, vidas, puntos; } me;
+
+unsigned int version = 0;
+if (save_read("slot1", &version, &me, sizeof me) != sizeof me || version != 2)
+    nueva_partida(&me);          // no hay partida, o es de otra version
+
+/* ... jugar ... */
+
+save_write("slot1", 2, &me, sizeof me);    // version 2, tus datos
+```
+
+| Función | Devuelve |
+|---|---|
+| `save_write(path, version, data, size)` | `0`, o `-1` |
+| `save_read(path, &version, data, cap)` | El tamaño, o `-1` |
+| `save_load(path, &version, &size)` | `malloc`'d, o NULL |
+| `save_size(path)` / `save_exists(path)` | Tamaño / 1 si hay copia buena |
+| `save_erase(path)` | Borra ambas |
+
+La `version` es tuya: sirve para distinguir un formato viejo del actual.
+
+<Callout type="info" title="Dónde se guardan">
+Los ficheros van donde `fopen` los ponga: al disco CeresFS (`slot1`, tras `fs_mount`), a
+una memoria (`stick0:/slot1`) o al anfitrión (`host:slot1`). El límite del nombre de ruta
+es `SAVE_PATH_MAX` (60); los ficheros añaden `.a` y `.b`.
+</Callout>
+
+## Manejo de errores
+
+| errno | Significado |
+|---|---|
+| `ENOENT` | No hay ninguna copia buena |
+| `ENOSPC` | El tamaño no cabe en el buffer |
+| `EIO` | El fichero no se pudo escribir entero |
+
+```c
+if (save_write("slot1", 2, &me, sizeof me) != 0)
+    perror("guardar");
+```
+
+<Callout type="warn" title="Dos escrituras a la vez, no">
+Dos escrituras de la misma partida no deben solaparse (por ejemplo desde un manejador de
+interrupción; las tareas cooperativas no se cambian a mitad de un guardado, así que ahí
+estás a salvo).
+</Callout>
+
+## Un sistema de ranuras
+
+```c
+void guardar(int ranura, const struct progreso* p)
+{
+    char ruta[32];
+    snprintf(ruta, sizeof ruta, "saves/slot%d", ranura);
+    save_write(ruta, 2, p, sizeof *p);
+}
+
+int cargar(int ranura, struct progreso* p)
+{
+    char ruta[32];
+    unsigned int v;
+    snprintf(ruta, sizeof ruta, "saves/slot%d", ranura);
+    return save_read(ruta, &v, p, sizeof *p) == (long)sizeof *p && v == 2;
+}
+```
+
+<Quiz question="¿Cuántos ficheros crea save_write en la ruta 'slot1'?"
+  options="Uno|Dos (.a y .b)|Tres|Ninguno, va a memoria"
+  answer="1"
+  explain="Dos copias alternas: escribe en la que no tiene la version buena mas nueva."></Quiz>

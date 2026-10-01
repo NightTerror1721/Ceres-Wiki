@@ -1,0 +1,111 @@
+# Hello, world
+
+The smallest program that does something useful. Put this in `hello.c`:
+
+```c title="hello.c"
+#include "stdio.h"
+
+int main(void)
+{
+    puts("hello, ceres");
+    return 0;
+}
+```
+
+## Build and run it
+
+```shell
+> ceresc hello.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+<Output title="Output">
+hello, ceres
+</Output>
+
+## What just happened
+
+1. **`ceresc`** read `hello.c`, turned it into **CASM** and assembled it into an object.
+2. It linked your object with the **library archive**: `puts` came from `stdio`.
+3. It wrote a `.cres` program and launched it on the virtual machine with `--run`.
+4. `main` returned **0**, which is the process exit status.
+
+## Line by line
+
+```c
+#include "stdio.h"      // declares puts, printf, and the streams
+int main(void)          // the entry point; 0..255 is the exit status
+{
+    puts("hello, ceres");   // writes the string and a '\n'
+    return 0;               // 0 = success
+}
+```
+
+<Callout type="info" title="return from main == exit()">
+In Ceres, `return n` from `main` equals `exit(n)`: `atexit` handlers run and open files are
+flushed. The machine also exposes `sys_exit()` and `sys_exit_status(n)` to stop from
+anywhere.
+</Callout>
+
+## A little more: numbers and format
+
+```c title="hello2.c"
+#include "stdio.h"
+#include "stdlib.h"
+
+int main(void)
+{
+    puts("hello, ceres");
+
+    int answer = 6 * 7;
+    printf("the answer is %d (0x%X, binary %b)\n", answer, answer, answer);
+    printf("pi is about %.4f\n", 3.14159265f);
+
+    char text[32];
+    printf("in hex: [%s]\n", itoa(answer, text, 16));
+    return 0;
+}
+```
+
+<Output>
+hello, ceres
+the answer is 42 (0x2A, binary 101010)
+pi is about 3.1416
+in hex: [2a]
+</Output>
+
+Note the **`%b`** conversion: binary output is a Ceres extension. And `%X` prints
+uppercase hex with no `0x` prefix.
+
+## A little more still: input
+
+```c title="greet.c"
+#include "stdio.h"
+#include "ceres/line.h"
+
+int main(void)
+{
+    char name[64];
+    if (line_prompt("What is your name? ", name, sizeof name) < 0)
+    {
+        puts("no input");
+        return 1;
+    }
+    printf("Hello, %s. Welcome to Ceres!\n", name);
+    return 0;
+}
+```
+
+<Output title="Session">
+What is your name? Ana
+Hello, Ana. Welcome to Ceres!
+</Output>
+
+<Callout type="tip" title="Files are not called .c by accident">
+The library uses the standard headers (`stdio.h`, `stdlib.h`, …) and Ceres headers
+(`ceres/line.h`, `ceres/gfx.h`, …). All of them are found with `-I include`.
+</Callout>
+
+<Quiz question="What does printf(&quot;%b&quot;, 5) print?"
+  options="5|0b101|101|%b"
+  answer="2"
+  explain="%b is the binary conversion Ceres adds: it prints the bits with no prefix, so 5 is 101."></Quiz>

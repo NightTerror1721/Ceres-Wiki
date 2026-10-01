@@ -1,0 +1,105 @@
+# Anatomy of a program
+
+When you build a Ceres program it is not loaded into some "flat" memory: it has a **map**
+with well-defined sections. Understanding it will help you reason about memory, the stack
+and the heap.
+
+## The memory map
+
+| Range | What lives there |
+|---|---|
+| `0x00000000` | **Vector table** (64 entries × 4 bytes); entry 0 is *reset* |
+| `0x00000100` | **BIOS** (768 bytes): default handler stubs |
+| `0x00000400` | **Your program starts**: `.text`, `.rodata`, `.data`, `.bss` |
+| … | **Heap** (grows upward, on demand) |
+| … | ↓ **Stack** (grows downward) |
+| end of RAM − 4 KiB | **System stack**: where interrupt handlers run |
+| `0xFF000000` + | **MMIO devices** (terminal, timer, disk, display, …) |
+
+<Callout type="info" title="The low 1 KiB is protected">
+Writing below `0x400` (vector table and BIOS) or onto `.text` raises a `MemoryFault`. The
+machine does not let a program modify its own code or rewrite the interrupt vectors at run
+time.
+</Callout>
+
+## The sections
+
+| Section | Contents | Writable? |
+|---|---|---|
+| `.text` | The code | No |
+| `.rodata` | Constants, string literals, `const` tables | No |
+| `.data` | Initialized global variables | Yes |
+| `.bss` | Globals zero-initialized | Yes (zeroed at load) |
+
+## See it on the machine
+
+`ceres/sys.h` can print your program's real map while it runs:
+
+```c title="layout.c"
+#include "stdio.h"
+#include "ceres/sys.h"
+
+int main(void)
+{
+    sys_print_layout();          // readable table with each section's bounds
+    printf("sp = %#x  heap = %#x  free = %u bytes\n",
+           sys_sp(), sys_heap_start(), sys_stack_free());
+    return 0;
+}
+```
+
+<Output title="Example output">
+text      00000400 - 0000A1C4
+rodata    0000A1C4 - 0000C3F0
+data      0000C3F0 - 0000C420
+bss       0000C420 - 0000D280
+heap      0000D280  sp 000F0000   free 933248
+sp = 0xF0000  heap = 0xD280  free = 933248 bytes
+</Output>
+
+<Callout type="tip" title="The stack cannot run into the heap">
+The heap grows upward but stops short of the stack. Every time it grows, `malloc` raises
+the machine's **stack limit**: if a recursive function goes too deep, you get a
+`StackOverflow` instead of silently corrupting memory.
+</Callout>
+
+## The build pipeline
+
+```
+   prog.c ──ceresc──▶ prog.casm ──ceres asm -c──▶ prog.cobj ──ceres link──▶ prog.cres ──ceres run──▶
+   (C)                 (CASM)                     (object)                  (program)          (machine)
+```
+
+| Extension | What it is |
+|---|---|
+| `.c` | Your C source |
+| `.casm` | **Readable** Ceres assembly, with your source lines in comments |
+| `.cobj` | Relocatable object |
+| `.car` | Archive: several objects together (the library is `libceres.car`) |
+| `.cres` | Linked program, ready for `ceres run` |
+
+<Callout type="info" title="Look at the CASM">
+Compile with `-S` and open the generated `.casm`. Every instruction carries a
+`// file:line` comment pointing at your C. It is the best way to learn how Ceres-C compiles.
+</Callout>
+
+## A look at the generated CASM
+
+For a tiny function, the assembly looks like this:
+
+```casm title="sum.casm (fragment)"
+@text
+global sum:                  // int sum(int a, int b)
+    enter __frame_sum
+    add r0, r0, r1           // a + b, the result goes in r0
+    leave
+    ret
+```
+
+Arguments arrive in `r0`–`r3` (and `f0`–`f3` for floats); the result comes back in `r0`.
+`enter`/`leave` set up and tear down the stack frame.
+
+<Quiz question="Where does a global variable initialized to 5 live?"
+  options=".text|.rodata|.data|.bss"
+  answer="2"
+  explain=".data holds initialized globals; .bss holds zero-initialized ones and .rodata the constants."></Quiz>

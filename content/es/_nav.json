@@ -1,0 +1,153 @@
+{
+  "title": "Ceres Wiki",
+  "sections": [
+    {
+      "title": "Primeros pasos",
+      "icon": "🚀",
+      "pages": [
+        { "slug": "inicio", "title": "Bienvenido a Ceres" },
+        { "slug": "instalacion", "title": "Instalar y compilar" },
+        { "slug": "hola-mundo", "title": "Hola, mundo" },
+        { "slug": "anatomia", "title": "Anatomía de un programa" }
+      ]
+    },
+    {
+      "title": "Compilar Ceres",
+      "icon": "🔧",
+      "pages": [
+        { "slug": "build-vm", "title": "Compilar la máquina virtual" },
+        { "slug": "build-ceresc", "title": "Compilar el compilador" },
+        { "slug": "build-stdlib", "title": "Compilar la librería estándar" },
+        { "slug": "build-toolchain", "title": "Montar el toolchain" }
+      ]
+    },
+    {
+      "title": "El lenguaje Ceres-C",
+      "icon": "🧩",
+      "pages": [
+        { "slug": "lenguaje-tipos", "title": "Tipos y variables" },
+        { "slug": "lenguaje-control", "title": "Control de flujo" },
+        { "slug": "lenguaje-funciones", "title": "Funciones, punteros y structs" },
+        { "slug": "lenguaje-64", "title": "64 bits y coma flotante" },
+        { "slug": "lenguaje-preprocesador", "title": "El preprocesador" },
+        { "slug": "lenguaje-genericos", "title": "Genéricos y atributos" }
+      ]
+    },
+    {
+      "title": "Consola y texto",
+      "icon": "⌨️",
+      "pages": [
+        { "slug": "consola-io", "title": "printf, scanf y la consola" },
+        { "slug": "consola-linea", "title": "Entrada de línea" },
+        { "slug": "consola-ansi", "title": "ANSI: color y cursor" },
+        { "slug": "consola-streams", "title": "Streams y ficheros" }
+      ]
+    },
+    {
+      "title": "Librerías estándar",
+      "icon": "📚",
+      "pages": [
+        { "slug": "lib-memoria", "title": "Memoria dinámica" },
+        { "slug": "lib-cadenas", "title": "Cadenas y bytes" },
+        { "slug": "lib-math", "title": "Matemáticas" },
+        { "slug": "lib-tiempo", "title": "Tiempo y temporizadores" },
+        { "slug": "lib-rand-hash", "title": "Aleatoriedad y hash" },
+        { "slug": "lib-varios", "title": "Ctype, locale, señales y setjmp" },
+        { "slug": "lib-unicode", "title": "Unicode: UTF-8 y wchar" },
+        { "slug": "lib-f64", "title": "El double de software" }
+      ]
+    },
+    {
+      "title": "Gráficos",
+      "icon": "🎨",
+      "pages": [
+        { "slug": "gfx-texto", "title": "Framebuffer de texto" },
+        { "slug": "gfx-display", "title": "Display de píxeles" },
+        { "slug": "gfx-dibujo", "title": "Dibujo 2D con gfx" },
+        { "slug": "gfx-sprites", "title": "Sprites, animación y tilemaps" },
+        { "slug": "gfx-color-font", "title": "Color y fuente" },
+        { "slug": "gfx-blitter", "title": "El blitter" }
+      ]
+    },
+    {
+      "title": "Sonido, TUI y entrada",
+      "icon": "🎮",
+      "pages": [
+        { "slug": "audio", "title": "Sonido: tonos y melodías" },
+        { "slug": "music", "title": "Música de 4 canales" },
+        { "slug": "tui", "title": "Interfaces de texto (TUI)" },
+        { "slug": "input", "title": "Teclado, ratón y gamepad" }
+      ]
+    },
+    {
+      "title": "Almacenamiento",
+      "icon": "💾",
+      "pages": [
+        { "slug": "store-disco-fs", "title": "El disco y CeresFS" },
+        { "slug": "store-host", "title": "Ficheros del anfitrión" },
+        { "slug": "store-periph", "title": "Memorias y cartuchos" }
+      ]
+    },
+    {
+      "title": "Datos y recursos",
+      "icon": "🗂️",
+      "pages": [
+        { "slug": "data-json", "title": "JSON sin heap" },
+        { "slug": "data-ini", "title": "Configuración INI" },
+        { "slug": "data-save", "title": "Partidas a prueba de fallos" },
+        { "slug": "data-pack", "title": "Packs de recursos" },
+        { "slug": "data-image-lz", "title": "Imágenes y compresión LZ4" }
+      ]
+    },
+    {
+      "title": "Sistema",
+      "icon": "⚙️",
+      "pages": [
+        { "slug": "sys-irq-fault", "title": "Interrupciones y fallos" },
+        { "slug": "sys-heap", "title": "El heap en detalle" },
+        { "slug": "sys-mmu", "title": "Memoria virtual (MMU)" },
+        { "slug": "sys-task", "title": "Tareas y canales" },
+        { "slug": "sys-backtrace", "title": "Backtrace y depuración" },
+        { "slug": "sys-args", "title": "Argumentos y entorno" }
+      ]
+    },
+    {
+      "title": "Estructuras de datos",
+      "icon": "🧱",
+      "pages": [
+        { "slug": "ds-lineales", "title": "Vectores, listas y colas" },
+        { "slug": "ds-mapas", "title": "Mapas y conjuntos" },
+        { "slug": "ds-avanzadas", "title": "Árboles, heaps y más" }
+      ]
+    },
+    {
+      "title": "Juegos completos",
+      "icon": "🕹️",
+      "pages": [
+        { "slug": "game-loop", "title": "El bucle de juego" },
+        { "slug": "game-pong", "title": "Pong paso a paso" },
+        { "slug": "game-arkanoid", "title": "Arkanoid" },
+        { "slug": "game-4enraya", "title": "4 en raya" },
+        { "slug": "game-sokoban", "title": "Sokoban por niveles" },
+        { "slug": "game-rpg", "title": "Aventura RPG 2D" }
+      ]
+    },
+    {
+      "title": "Línea de comandos",
+      "icon": "⌘",
+      "pages": [
+        { "slug": "cli-ceres", "title": "El CLI de ceres" },
+        { "slug": "cli-ceresc", "title": "El CLI de ceresc" },
+        { "slug": "cli-debugger", "title": "El depurador" }
+      ]
+    },
+    {
+      "title": "Referencia",
+      "icon": "📖",
+      "pages": [
+        { "slug": "ref-cheatsheet", "title": "Chuletario" },
+        { "slug": "ref-apendice", "title": "Apéndice: dispositivos" }
+      ]
+    }
+  ]
+}

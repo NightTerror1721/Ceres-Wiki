@@ -1,0 +1,135 @@
+# Genéricos y atributos
+
+El compilador implementa varias herramientas modernas de C que la librería aprovecha a
+fondo.
+
+## `_Generic` (C11)
+
+Selecciona una expresión según el **tipo** de su argumento. La librería lo usa para dar
+APIs cómodas sin funciones separadas por tipo.
+
+```c
+#define TIPO_DE(x) _Generic((x), \
+    int: "entero", \
+    float: "float", \
+    char*: "cadena", \
+    default: "otro")
+
+printf("%s\n", TIPO_DE(42));        // entero
+printf("%s\n", TIPO_DE("hola"));    // cadena
+```
+
+`stdbit.h` lo usa para que `stdc_leading_zeros(x)` elija la variante de 8, 16, 32 o 64
+bits automáticamente.
+
+<Callout type="tip" title="Se pliega como constante">
+Una selección `_Generic` es una expresión constante si lo es la rama elegida, así que
+sirve en `_Static_assert`, en enumeradores y en inicializadores.
+</Callout>
+
+## `_Static_assert`
+
+Comprueba algo **al compilar** y, si falla, muestra un mensaje. No cuesta nada en tiempo
+de ejecución.
+
+```c
+_Static_assert(sizeof(struct tm) == 36, "struct tm debe medir 9 palabras");
+_Static_assert(sizeof(long long) == 8, "");
+```
+
+Puede ir a nivel de fichero, en un bloque o dentro de un `struct`.
+
+## Literales compuestos y designados
+
+```c
+struct punto { int x, y; };
+
+struct punto p = { .y = 2, .x = 1 };            // designado
+int* v = (int[]){ 10, 20, 30 };                 // literal compuesto de array
+dibujar((struct punto){ .x = 5, .y = 5 });      // literal compuesto en una llamada
+```
+
+## Atributos
+
+`__attribute__((...))` va donde lo pondría GCC. Estos son los que realmente hacen algo:
+
+| Atributo | Efecto |
+|---|---|
+| `noreturn` | La función no vuelve (como `exit`) |
+| `format(printf, i, j)` | Comprueba el formato contra los argumentos (`W3005`/`W3006`) |
+| `pure` | Sin efectos secundarios (su resultado se puede reusar) |
+| `const` | Además no lee memoria |
+| `noinline` / `always_inline` | Controla el *inlining* |
+| `deprecated` | Avisa en cada uso (`W3003`) |
+| `warn_unused_result` | Avisa si se descarta el retorno (`W3004`) |
+| `aligned(N)` | Alineación hasta 4; por encima se ignora con `W2002` |
+| `interrupt` | Función manejadora de interrupción |
+
+Ejemplo:
+
+```c
+int mi_printf(const char* fmt, ...)
+    __attribute__((format(printf, 1, 2)));
+
+void fatal(const char* msg) __attribute__((noreturn));
+```
+
+<Callout type="info" title="El formato se comprueba de verdad">
+Con `format(printf, i, j)` el compilador valida `%d`, `%lld`, `%s`, `%lc`, `%a`… contra
+los tipos de los argumentos. En esta máquina, dar un `%lld` a un `int` descoloca todos los
+argumentos siguientes, así que el aviso `W3005` te salva de bugs muy sutiles.
+</Callout>
+
+## Ensamblador dentro de C
+
+```c
+void pausa(void) { __asm__("nop"); }
+```
+
+Y para enlazar con una función escrita a mano en CASM, se cambia su nombre de símbolo:
+
+```c
+int copia_rapida(int a) __asm__("hand_made");
+```
+
+## Manejadores de interrupción
+
+```c
+__interrupt void mi_timer(void) { /* ... */ }
+__interrupt_vector(16, mi_timer);     // vector 16 = IRQ_TIMER
+```
+
+Un manejador no se llama desde C: se entra por la tabla de vectores. Corre en la **pila
+del sistema** (4 KiB) y con las interrupciones enmascaradas: debe ser corto y no llamar a
+`printf` ni a `malloc`. Lo vemos a fondo en **Interrupciones y fallos**.
+
+## `volatile` y `restrict`
+
+```c
+volatile unsigned int* reg = (volatile unsigned int*)0xFF010000;
+int copia(int* restrict dst, const int* restrict src, int n);  // sin solape
+```
+
+`volatile` es obligatorio para MMIO; `restrict` permite al compilador asumir no-solape en
+accesos directos.
+
+## Anatomía de un atributo bien usado
+
+```c
+#include "stdio.h"
+
+void registrar(const char* nombre)
+    __attribute__((nonnull(1)));     // aceptado (aunque hoy se ignora)
+
+__attribute__((noreturn))
+void morir(const char* razon)
+{
+    fprintf(stderr, "fatal: %s\n", razon);
+    exit(1);
+}
+```
+
+<Quiz question="¿Para qué sirve __attribute__((format(printf,1,2)))?"
+  options="Para acelerar printf|Para que el compilador compruebe el formato contra los argumentos|Para imprimir en colores|Para permitir mas de 4 argumentos"
+  answer="1"
+  explain="Genera avisos W3005/W3006 si el formato no concuerda con los tipos de los argumentos."></Quiz>

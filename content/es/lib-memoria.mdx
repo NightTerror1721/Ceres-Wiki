@@ -1,0 +1,126 @@
+# Memoria dinámica
+
+La librería trae tres herramientas de memoria para tres necesidades distintas. Elegir bien
+es la mitad del rendimiento.
+
+## `malloc` y compañía
+
+El heap vive entre el final de tu imagen y la pila. Es un asignador **TLSF** (two-level
+segregated fit): reservar y liberar cuestan lo mismo con pocos o muchos bloques.
+
+```c
+#include "stdlib.h"
+
+int* v = malloc(100 * sizeof(int));
+if (!v) { puts("sin memoria"); return 1; }
+
+int* w = calloc(100, sizeof(int));   // ya a cero
+v = realloc(v, 200 * sizeof(int));   // crece (o mueve) el bloque
+
+free(v);
+free(w);                             // free(NULL) no hace nada
+```
+
+| Función | Nota |
+|---|---|
+| `malloc(n)` | NULL si `n == 0` o no cabe |
+| `calloc(n, size)` | a cero; NULL si `n*size` se desborda |
+| `realloc(p, n)` | crece en sitio si puede (el hueco de arriba o el final del heap) |
+| `free(p)` | fusiona con vecinos libres al instante |
+| `aligned_alloc(a, n)` | alineación potencia de dos |
+| `posix_memalign(&p, a, n)` | variante POSIX |
+| `malloc_usable_size(p)` | cuánto cabe de verdad en el bloque |
+
+<Callout type="tip" title="El heap protege tu pila">
+Cada vez que el heap crece, `malloc` sube el **límite de pila** de la máquina. Una
+recursión que baje demasiado recibe un `StackOverflow`, no reescribe tus datos. El margen
+que se deja a la pila se ajusta con `heap_set_stack_reserve(bytes)`.
+</Callout>
+
+## Diagnóstico del heap
+
+```c
+#include "ceres/heap.h"
+
+struct heap_stats h;
+heap_stats(&h);
+printf("%d bloques, %u en uso, hueco mayor %u\n", h.blocks, h.used, h.largest_free);
+printf("heap %#x..%#x, limite %#x\n", h.start, h.brk, h.limit);
+
+if (heap_check() != 0)
+    puts("heap corrupto");
+heap_dump();     // una línea por bloque
+```
+
+## Detectar abusos
+
+`free` de un puntero que no devolvió `malloc`, doble `free`… se detectan. Puedes enganchar
+un manejador propio en vez de abortar:
+
+```c
+static void mi_error(const char* que, void* p)
+{
+    fprintf(stderr, "heap: %s en %p\n", que, p);
+}
+heap_set_error_handler(mi_error);
+```
+
+Y con `CERES_HEAP_DEBUG` (una macro de configuración) cada bloque lleva un canario y los
+bloques liberados se rellenan con `0xDD`, así `heap_check()` pilla sobreescrituras:
+
+```shell
+> ceresc prog.c ... -DCERES_HEAP_DEBUG=1
+```
+
+## Arena: mucha memoria de una vez
+
+Para memoria con **una sola vida** (el marco de un nivel, el resultado de un parseo), el
+arena es un puntero que sube y se libera de golpe.
+
+```c
+#include "ceres/arena.h"
+
+unsigned char buf[64 * 1024];
+struct arena a;
+arena_init(&a, buf, sizeof buf);
+
+char* nombre = arena_strdup(&a, "Kevin");
+int* numeros = arena_alloc(&a, 100 * sizeof(int));
+
+unsigned int marca = arena_mark(&a);
+/* ... trabajo temporal ... */
+arena_release(&a, marca);       // vuelve a la marca
+arena_reset(&a);                // vacía todo
+```
+
+`arena_init_heap(&a, tam)` toma la memoria de `malloc` (y `arena_destroy` la libera).
+
+## Pool: bloques de tamaño fijo en O(1)
+
+Para entidades, balas o partículas: asignar y liberar en tiempo constante, sin fragmentar.
+
+```c
+#include "ceres/pool.h"
+
+static unsigned char storage[64 * sizeof(struct bala)];
+struct pool balas;
+pool_init(&balas, storage, sizeof(struct bala), 64);
+
+struct bala* b = pool_alloc(&balas);   // NULL si no quedan
+if (b) { b->x = 10; }
+pool_free(&balas, b);
+```
+
+## ¿Cuál uso?
+
+| Necesidad | Herramienta |
+|---|---|
+| Muchos alloc/free de tamaños variados | `malloc`/`free` |
+| Muchos objetos iguales creados y destruidos | `pool` |
+| Memoria temporal con una única vida | `arena` |
+| Vecores/mapas que crecen | `ceres/ds/vector.h` y demás (sobre `malloc`) |
+
+<Quiz question="¿Qué estructura eligen las balas de un juego, que nacen y mueren sin parar?"
+  options="malloc/free cada vez|Un pool de bloques fijos|Un arena nueva por bala|No se pueden reutilizar"
+  answer="1"
+  explain="El pool da asignación y liberación en tiempo constante sin fragmentar, perfecto para objetos del mismo tamaño."></Quiz>

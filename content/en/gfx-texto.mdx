@@ -1,0 +1,133 @@
+# Text framebuffer
+
+The **text framebuffer** is a grid of characters your program draws into and then shows. It
+is not a scrolling console: it is a board redrawn whole, ideal for text games, roguelikes
+and menus.
+
+## Init it
+
+```c
+#include "ceres/textfb.h"
+
+if (fb_init(40, 20) != 0)     // columns, rows (up to 200x100)
+{
+    puts("no screen");
+    return 1;
+}
+fb_shutdown();
+```
+
+## Drawing
+
+```c
+fb_clear(' ');                 // fill the grid
+fb_put(x, y, '@');             // one cell
+fb_text(x, y, "Hello ñandú");  // UTF-8; '\n' drops a row
+fb_printf(x, y, "HP %d", hp);  // formatted
+fb_hline(x, y, len, '-');
+fb_vline(x, y, len, '|');
+fb_rect(x, y, w, h, '#');      // outline
+fb_fill(x, y, w, h, '.');
+fb_box(x, y, w, h);            // frame with + - |
+fb_copy(dx, dy, sx, sy, w, h); // copy a region
+fb_scroll(1);                  // scroll up one row
+fb_present();                  // show the frame
+```
+
+## Per-cell colour
+
+Each cell has a colour attribute (one byte). `0` means the terminal's own colours.
+
+```c
+fb_set_attr(FB_ATTR(FB_BRIGHT + FB_YELLOW, FB_BLACK));
+fb_text(1, 1, "Title");
+
+fb_put_attr(10, 10, '@', FB_ATTR(FB_WHITE, FB_BLUE));   // one cell with its own
+unsigned char a = fb_get_attr(10, 10);
+```
+
+Colours: `FB_BLACK FB_RED FB_GREEN FB_YELLOW FB_BLUE FB_MAGENTA FB_CYAN FB_WHITE`, plus
+`FB_BRIGHT` to add brightness. `FB_ATTR(fg, bg)` packs them.
+
+## Where does the frame go?
+
+- With a window (SDL): it is drawn into a **window** with the bitmap font, in colour.
+- Without a window (`--terminal`, or `CERES_HEADLESS=1`): it is printed as **text** to the
+  output.
+
+You can force it at run time:
+
+```c
+fb_set_output(FB_OUT_TERMINAL);   // or FB_OUT_WINDOW, FB_OUT_AUTO
+int where = fb_output();
+```
+
+## An example: a minimal roguelike
+
+```c title="rogue.c"
+// USE: irq
+#include "stdio.h"
+#include "ceres/textfb.h"
+#include "ceres/key.h"
+#include "ceres/rand.h"
+
+#define W 40
+#define H 20
+
+static char map[H][W];
+static int px = W / 2, py = H / 2;
+
+static void generate(void)
+{
+    struct rng r;
+    rng_seed(&r, 1234);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            map[y][x] = (x == 0 || y == 0 || x == W - 1 || y == H - 1)
+                       ? '#' : (rng_chance(&r, 12) ? '#' : '.');
+    map[py][px] = '.';
+}
+
+static void draw(void)
+{
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            fb_put(x, y, map[y][x]);
+    fb_put(px, py, '@');
+    fb_printf(0, 0, "pos %d,%d", px, py);
+    fb_present();
+}
+
+int main(void)
+{
+    if (fb_init(W, H) != 0) return 1;
+    generate();
+    key_start();
+    for (;;)
+    {
+        draw();
+        int k = key_wait();
+        if (k == KEYC_ESC || k == 'q') break;
+        int nx = px, ny = py;
+        if (k == KEYC_UP || k == 'w')    ny--;
+        if (k == KEYC_DOWN || k == 's')  ny++;
+        if (k == KEYC_LEFT || k == 'a')  nx--;
+        if (k == KEYC_RIGHT || k == 'd') nx++;
+        if (map[ny][nx] != '#') { px = nx; py = ny; }
+    }
+    key_stop();
+    fb_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="The framebuffer and the keys">
+In a window the keys arrive on the keyboard device; in a terminal, the first call to
+`key_start()` asks the host to deliver them as they are pressed. The **`irq`** module is not
+needed for `key_wait()`: it blocks on the device.
+</Callout>
+
+<Quiz question="What does a colour attribute of 0 mean in a cell?"
+  options="Black on black|The terminal's own colours|Invisible|Error"
+  answer="1"
+  explain="Attribute 0 leaves the cell with the terminal's default colours instead of forcing a pair."></Quiz>

@@ -1,0 +1,103 @@
+# Colour and font
+
+## Colours
+
+A colour is `0x00RRGGBB` in an `unsigned int`, channels 0 to 255.
+
+```c
+#include "ceres/color.h"
+
+unsigned int c = RGB(255, 128, 0);      // orange
+unsigned int r = COL_R(c);              // 255
+unsigned int g = COL_G(c);              // 128
+unsigned int b = COL_B(c);              // 0
+```
+
+Ready-made constants: `COL_BLACK`, `COL_WHITE`, `COL_RED`, `COL_GREEN`, `COL_BLUE`,
+`COL_YELLOW`, `COL_CYAN`, `COL_MAGENTA`, `COL_GRAY`.
+
+And utilities:
+
+```c
+color_hsv(h, s, v)          // h in degrees (any integer), s and v 0..255
+color_lerp(a, b, t)         // t 0..255: 0 gives a, 255 gives b
+color_blend(dst, src, alpha) // src over dst (alpha 0..255)
+color_scale(c, factor)      // each channel * factor/256
+```
+
+`PALETTE16` is the classic 16-colour CGA/EGA palette.
+
+```c
+/* a gradient */
+for (int y = 0; y < 200; y++)
+    gfx_hline(0, y, 320, color_lerp(RGB(20, 24, 60), RGB(240, 140, 60), y * 255 / 199));
+```
+
+## The bitmap font
+
+An 8×8 font with ASCII and Latin-1 (U+00A0–U+00FF). Text is drawn in the foreground colour;
+the background is left as it was.
+
+```c
+#include "ceres/font.h"
+
+font_char(NULL, x, y, 'A', RGB(255,255,255), 1);        // one byte (Latin-1)
+font_char32(NULL, x, y, 0x00F1, COLOR, 1);              // a code point ('ñ')
+font_text(NULL, x, y, "Score: 100", COLOR, 2);          // UTF-8, scale 2
+font_printf(NULL, x, y, COLOR, 1, "Level %d", level);   // formatted (max 255 chars)
+
+int width  = font_text_width("hello", 2);   // pixels of the longest line
+int height = font_text_height("a\nbc", 2);  // pixels of every line
+```
+
+The advance of one unscaled character is `FONT_W` (8) wide and `FONT_H` (8) tall; the letter
+itself is 5×7, leaving one column and one row of separation. `scale` multiplies the size.
+`\n` starts a new line at the same `x`.
+
+## Colours in the text framebuffer
+
+In `ceres/textfb.h` the colour is a per-cell attribute:
+
+```c
+fb_set_attr(FB_ATTR(FB_BRIGHT + FB_CYAN, FB_BLACK));
+```
+
+## Example: a title screen
+
+```c title="title.c"
+#include "ceres/gfx.h"
+#include "ceres/font.h"
+#include "ceres/color.h"
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    gfx_clear(RGB(10, 12, 24));
+    for (int i = 0; i < 40; i++)
+        gfx_circle_fill(320 / 2, 70, 30 + i, color_hsv(200 + i * 2, 180, 30 + i));
+
+    font_text(NULL, 40, 130, "MY GAME", RGB(255, 220, 90), 3);
+    font_text(NULL, 70, 165, "Press ENTER", RGB(180, 190, 210), 1);
+
+    gfx_present();
+    getchar();
+    gfx_shutdown();
+    return 0;
+}
+```
+
+<Callout type="tip" title="Text with a shadow">
+To make text readable over any background, draw it twice: first in black shifted one pixel,
+then on top in its colour.
+
+```c
+font_text(NULL, x + 1, y + 1, t, RGB(0,0,0), 1);
+font_text(NULL, x,     y,     t, RGB(255,255,255), 1);
+```
+</Callout>
+
+<Quiz question="What does font_printf do with the y coordinate when it hits a '\\n'?"
+  options="Goes back to the starting column|Starts a new line at the same x|Clears the screen|Nothing"
+  answer="1"
+  explain="Both font_text and font_printf start the new line at the same x you passed."></Quiz>

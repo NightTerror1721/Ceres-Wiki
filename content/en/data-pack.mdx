@@ -1,0 +1,109 @@
+# Resource packs
+
+A **pack** puts all of a game's assets — images, levels, text, music — into a single file,
+which can live on the disk, in a host file or on a cartridge. Only the **directory** is kept
+in RAM: each entry is read when it is asked for.
+
+## Build a pack (on the host)
+
+```shell
+> node tools/mkpack.js game.cart art/ levels/ readme.txt
+```
+
+`mkpack.js` compresses each entry with LZ4, **verifies** it by decompressing it, and only
+stores it compressed if it really takes less. It pads the file to whole sectors, so it can be
+plugged in as a cartridge.
+
+## Open a pack
+
+```c
+#include "ceres/pack.h"
+
+struct pack p;
+
+pack_open_port(&p, 1);                       // what is in port 1
+pack_open_file(&p, "host:game.cart");        // any fopen path
+pack_open_memory(&p, data, size);            // a pack already in memory (not copied)
+/* or: pack_open(&p, &blockdev); */
+
+int n = pack_count(&p);
+const struct pack_entry* e = pack_find(&p, "art/hero.qoi");
+```
+
+## Read entries
+
+```c
+size_t size;
+char* text = pack_load(&p, "levels/one.txt", &size);   // malloc'd, NUL-terminated
+/* ... use ... */
+free(text);
+
+struct gfx_surface* hero = pack_image(&p, "art/hero.qoi", RGB(255,0,255));
+gfx_blit_key(hero, 0, 0, hero->w, hero->h, 40, 30, RGB(255,0,255));
+image_free(hero);
+
+pack_close(&p);
+```
+
+| Function | Returns |
+|---|---|
+| `pack_count` | How many entries |
+| `pack_entry_at(p, i)` | Entry i (NULL out of range) |
+| `pack_find(p, name)` | The entry, or NULL (`ENOENT`) |
+| `pack_read(p, e, dst, cap)` | Size, or `-1` |
+| `pack_load(p, name, &size)` | `malloc`'d, or NULL |
+| `pack_image(p, name, transparent)` | A surface, or NULL |
+
+<Callout type="info" title="CRCs are checked on read">
+Each entry stores a CRC-32 of its bytes. If it does not match on read, `pack_read` fails
+with `EIO`: a corrupt pack does not go unnoticed.
+</Callout>
+
+## The format (in case you want to generate it yourself)
+
+Little-endian. A 16-byte header: `"CPAK"`, version (`u16`), entry count (`u16`), directory
+offset (`u32`), and a `u32` zero. Each directory entry is 48 bytes: name up to 31 characters
+(padded to 32), offset, size, stored bytes and CRC. The data, anywhere after. `PACK_NAME_MAX`
+is 31; the namespace is flat (`/` is just a character).
+
+## Example: loading the level from a cartridge
+
+```c title="game.c"
+#include "stdio.h"
+#include "stdlib.h"
+#include "ceres/pack.h"
+#include "ceres/gfx.h"
+
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    struct pack p;
+    if (pack_open_port(&p, 1) != 0) { puts("no cartridge"); return 1; }
+
+    struct gfx_surface* background = pack_image(&p, "art/background.qoi", IMAGE_OPAQUE);
+    if (!background) { perror("art/background.qoi"); return 1; }
+
+    gfx_clear(0);
+    gfx_blit(background, 0, 0, background->w, background->h, 0, 0);
+    gfx_present();
+
+    image_free(background);
+    pack_close(&p);
+    gfx_shutdown();
+    return 0;
+}
+```
+
+Run it with `--cart 1=game.cart`.
+
+<Callout type="tip" title="Why only the directory in RAM">
+A game with 200 resources does not want to allocate memory for all 200 at once. The pack
+reads each entry on demand with **one sector of cache**, so it can carry a large cartridge
+with very little RAM.
+</Callout>
+
+<Quiz question="What is kept in RAM for an open pack?"
+  options="All the entries|Only the directory|Nothing|The whole compressed file"
+  answer="1"
+  explain="Only the directory; each entry is read when requested, with one sector of cache."></Quiz>

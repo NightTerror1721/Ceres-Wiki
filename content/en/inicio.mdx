@@ -1,0 +1,75 @@
+# Welcome to Ceres
+
+**Ceres** is a 32-bit virtual machine with its own processor, I/O devices, a C compiler and
+a complete standard library. This wiki takes you from `Hello, world` to full retro games,
+covering **every** module along the way.
+
+<Callout type="tip" title="What you will build">
+By the end you will know how to write, build and debug Ceres programs: console programs
+first, then graphics, sound, files and crash-safe saves, and finally **Pong**,
+**Arkanoid**, **Connect Four**, **Sokoban** and a **2D RPG adventure** with levels.
+</Callout>
+
+## The three pieces
+
+Ceres is not a standalone library: it is **three projects that fit together**.
+
+| Project | What it is | What it gives you |
+|---|---|---|
+| **CeresASM** | The virtual machine | 32-bit processor, 183 instructions, MMIO devices, reverse-execution debugger |
+| **Ceres-C** | The compiler | C (C89 + `long long` + parts of C11/C23) producing readable assembly |
+| **Ceres STDLIB** | The standard library | `stdio`, `stdlib`, `math`, graphics, sound, files, data structures… |
+
+The flow is **C → CASM → object → program**, and the whole environment is
+**deterministic**: the machine's clock counts instructions, so the same program does exactly
+the same thing on every run.
+
+## Play a little first
+
+These are the games you will program. You can try them here; they are the same logic you
+will later write in Ceres, reimplemented in JavaScript so the wiki itself is playable.
+
+<GameDemo kind="pong" title="Pong">
+Move your paddle with the mouse or **W/S**. The machine plays on the right.
+</GameDemo>
+
+<GameDemo kind="sokoban" title="Sokoban">
+Push every yellow crate onto a green goal. **Arrows** or **WASD**, **R** to restart,
+**Nivel** for the next level.
+</GameDemo>
+
+## Pick your path
+
+<Cards>
+  <Card title="Start from scratch" icon="🚀" href="/wiki/instalacion">Build the library and run your first program in five minutes.</Card>
+  <Card title="Learn the language" icon="🧩" href="/wiki/lenguaje-tipos">Types, control flow, and the C subset Ceres-C implements.</Card>
+  <Card title="Draw and make sound" icon="🎨" href="/wiki/gfx-display">Pixels, sprites, four-channel music and game input.</Card>
+  <Card title="Save and load" icon="💾" href="/wiki/store-disco-fs">CeresFS, crash-safe saves and resource packs.</Card>
+  <Card title="Make games" icon="🕹️" href="/wiki/game-loop">The game loop and the five complete games in the tutorial.</Card>
+  <Card title="Cheat sheet" icon="📖" href="/wiki/ref-cheatsheet">The whole API on one page for quick reference.</Card>
+</Cards>
+
+## The philosophy of the machine
+
+The machine is not "an emulator of an old computer": it is a **coherent, didactic** design
+meant to let you follow a single instruction from the C code all the way down to the last
+register.
+
+<Callout type="info" title="Determinism">
+The tick counter is the number of executed instructions. That is why the library's tests
+require a program to print **the same bytes** at `-O0`, `-O1` and `-O2`, and why the
+debugger can **rewind** execution.
+</Callout>
+
+## Ready?
+
+<Steps>
+  <Step title="Build and run">Go to **Installing and building** and get the environment ready.</Step>
+  <Step title="Your first program">Write `Hello, world` and run it on the machine.</Step>
+  <Step title="Understand the machine">Learn how a Ceres program is laid out in memory.</Step>
+</Steps>
+
+<Quiz question="Which of these is NOT one of the three Ceres projects?"
+  options="The CeresASM virtual machine|The Ceres-C compiler|The Ceres STDLIB standard library|The CeresOS operating system"
+  answer="3"
+  explain="Ceres has no operating system: programs talk directly to devices through MMIO."></Quiz>

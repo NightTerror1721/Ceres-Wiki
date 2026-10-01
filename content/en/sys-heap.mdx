@@ -1,0 +1,104 @@
+# The heap in detail
+
+This page complements **Dynamic memory** with what is underneath: how it is built and how to
+diagnose it.
+
+## A TLSF allocator
+
+The heap is a **two-level segregated fit**: free blocks are kept in lists by size, with two
+levels (exact small classes and large classes by powers of two). The practical consequence:
+
+- `malloc` and `free` cost **O(1)**, independent of the number of blocks.
+- The block found is a good fit, not just the first one that works.
+- A large block is split; `free` merges immediately with its free neighbours.
+
+| Detail | Value |
+|---|---|
+| Header | 8 bytes |
+| Payload alignment | 8 bytes |
+| Minimum size | 8 bytes |
+| Default reserve for the stack | 16 KiB (`CERES_HEAP_STACK_RESERVE`) |
+
+## Statistics
+
+```c
+#include "ceres/heap.h"
+
+struct heap_stats h;
+heap_stats(&h);
+printf("%d blocks (%d free)\n", h.blocks, h.free_blocks);
+printf("in use %u  free %u  largest hole %u\n", h.used, h.free_bytes, h.largest_free);
+printf("range %#x..%#x  limit %#x\n", h.start, h.brk, h.limit);
+```
+
+And checks:
+
+```c
+if (heap_check() != 0) puts("block list corrupt");
+heap_dump();                   // one line per block
+unsigned int free_bytes = heap_free();
+int n = heap_blocks();
+```
+
+## The heap and the stack
+
+The heap grows upward from `__heap_start`. Every time it grows, `malloc` sets the machine's
+**stack limit** just above it, with a margin (`heap_set_stack_reserve`). So a recursive
+function that goes too deep gets a `StackOverflow` instead of overwriting your data.
+
+```c
+heap_set_stack_reserve(64 * 1024);    // leave more margin for the stack
+unsigned int free_bytes = sys_stack_free(); // bytes between the top of the heap and sp
+```
+
+## Diagnosing misuse
+
+`free`/`realloc` validate their pointers: they detect a double `free`, a `free` of an
+interior pointer, or of one `malloc` never returned. By default they print the problem and
+abort; you can capture it:
+
+```c
+static void my_heap_error(const char* what, void* p)
+{
+    fprintf(stderr, "heap: %s at %p\n", what, p);
+}
+heap_set_error_handler(my_heap_error);
+```
+
+And with **debug** mode enabled at build time:
+
+```shell
+> ceresc prog.c ... -DCERES_HEAP_DEBUG=1
+```
+
+every block carries a **canary** after it, freed blocks are filled with `0xDD` and
+`heap_check()` looks at both, so it catches **overruns** of one byte too many.
+
+<Callout type="tip" title="Do not reimplement malloc">
+For objects of the same size (bullets, particles) use a **pool**; for memory with a single
+lifetime, an **arena**. The **Dynamic memory** page compares them. The heap's `malloc` is for
+everything else.
+</Callout>
+
+## Aligned allocation
+
+```c
+void* p = aligned_alloc(64, size);     // power-of-two alignment
+void* q;
+if (posix_memalign(&q, 4096, size) != 0) { /* ENOMEM */ }
+size_t fits = malloc_usable_size(p);   // >= what was asked
+```
+
+## A heap dump
+
+<Output title="heap_dump() (example)">
+[0x0000D280] free        size  8192
+[0x0000F280] IN USE      size   256
+[0x0000F390] free        size    64
+[0x0000F3D8] IN USE      size  1024
+</Output>
+
+<Quiz question="What does malloc/free cost in this heap?"
+  options="O(n) with the blocks|O(log n)|O(1)|O(n^2)"
+  answer="2"
+  explain="TLSF searches size lists with two levels of bitmaps, so it is constant time."></Quiz>

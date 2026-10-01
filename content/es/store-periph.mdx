@@ -1,0 +1,116 @@
+# Memorias y cartuchos
+
+La máquina tiene **4 puertos periféricos** (`0xFF0A0000`): el sitio donde una persona
+conecta una memoria USB o un cartucho de juego mientras el programa corre.
+
+## Qué puede haber en un puerto
+
+| Tipo | Constante | Se puede escribir |
+|---|---|---|
+| Vacío | `PERIPH_NONE` | — |
+| Almacenamiento (memoria) | `PERIPH_STORAGE` | Sí (salvo protección del anfitrión) |
+| Cartucho | `PERIPH_CARTRIDGE` | No (solo lectura) |
+
+Cada puerto se conecta desde la línea de órdenes:
+
+```shell
+> ceres run juego.cres --port 0=memoria.img --cart 1=nivel1.cart
+```
+
+o en caliente (arrastrar un fichero a la ventana, o desde el depurador).
+
+## Consultar los puertos
+
+```c
+#include "ceres/periph.h"
+
+int puertos = periph_ports();                  // normalmente 4
+if (periph_present(0))
+{
+    int tipo = periph_type(0);                 // PERIPH_STORAGE
+    int protegido = periph_protected(0);       // 1 si no se puede escribir
+    unsigned int sectores = periph_sectors(0);
+    unsigned int id = periph_id(0);            // mismo medio, mismo id
+}
+```
+
+## Leer y escribir sectores
+
+Sectores de 512 bytes, como el disco:
+
+```c
+unsigned char sector[PERIPH_SECTOR_SIZE];
+periph_read(0, 0, sector);                     // sector 0
+periph_write(0, 1, datos);                     // falla en un cartucho
+periph_read_n(0, 0, buffer, 16);               // 16 sectores seguidos
+periph_flush(0);                               // salva los cambios a su fichero
+periph_eject(0);                               // "extrae" el medio
+```
+
+Todas devuelven `0` o `-1` (puerto inexistente, vacío, sector fuera de rango, escritura a
+un cartucho…).
+
+## Eventos de conexión
+
+Cada conexión o desconexión es un **evento**. Los medios conectados antes de arrancar ya
+tienen su evento esperando.
+
+```c
+struct periph_event ev;
+while (periph_next_event(&ev))
+{
+    if (ev.kind == PERIPH_CONNECTED && periph_type(ev.port) == PERIPH_STORAGE)
+        printf("memoria conectada en el puerto %d (%u sectores)\n",
+               ev.port, periph_sectors(ev.port));
+}
+```
+
+O esperar a uno (con tiempo de espera en milisegundos; `0` = para siempre):
+
+```c
+if (periph_wait(&ev, 5000))
+    printf("evento en el puerto %d\n", ev.port);
+```
+
+Cada evento también dispara la interrupción **23** (`IRQ_PERIPH`), por si tu programa
+prefiere que le despierten.
+
+<Callout type="tip" title="Cómo montar el cartucho como sistema de ficheros">
+Con `fs_mount_port(1)` el cartucho del puerto 1 se monta como volumen **`cart1`** y puedes
+usar `fopen("cart1:/nivel.dat", "r")` como con cualquier CeresFS. Mira **Ficheros del
+anfitrión** y **El disco y CeresFS**.
+</Callout>
+
+## Un cartucho de recursos
+
+El formato de **packs de recursos** (`ceres/pack.h`) se lee directamente de un puerto, y su
+herramienta `mkpack.js` rellena el fichero a sectores completos para que se pueda enchufar
+como cartucho:
+
+```c
+#include "ceres/pack.h"
+
+struct pack p;
+if (pack_open_port(&p, 1) == 0)
+{
+    struct gfx_surface* heroe = pack_image(&p, "art/heroe.qoi", RGB(255,0,255));
+    char* nivel = pack_load(&p, "niveles/uno.txt", NULL);
+    pack_close(&p);
+}
+```
+
+## Un guardado portátil
+
+```c
+void guardar_en_memoria(int puerto, const void* datos, unsigned int n)
+{
+    unsigned int sectores = (n + PERIPH_SECTOR_SIZE - 1) / PERIPH_SECTOR_SIZE;
+    periph_write_n(puerto, 0, datos, sectores);
+    periph_flush(puerto);       // que el fichero del anfitrion quede al dia
+}
+```
+
+<Quiz question="¿Se puede escribir en un cartucho?"
+  options="Sí, siempre|No, es de solo lectura|Solo en el puerto 0|Solo 512 bytes"
+  answer="1"
+  explain="Un cartucho es PERIPH_CARTRIDGE, de solo lectura; periph_write devuelve -1."></Quiz>

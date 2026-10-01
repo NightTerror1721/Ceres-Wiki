@@ -1,0 +1,122 @@
+# Building the virtual machine (CeresASM)
+
+**CeresASM** is the virtual machine: the processor, the devices, the assembler, the linker
+and the debugger. The **`ceres`** executable comes from here — the tool you use to assemble,
+link, run and debug programs.
+
+<Callout type="info" title="The source tree is in Ceres/">
+The `CeresASM` repository keeps the docs in `docs/` and the sources in the **`Ceres/`**
+subfolder. `CMakePresets.json` and `CMakeLists.txt` are **inside `Ceres/`**, so every CMake
+command runs from there.
+</Callout>
+
+## 1. Requirements
+
+| Requirement | Detail |
+|---|---|
+| **CMake** | 3.28 or newer |
+| **C++23 compiler** | MSVC (`cl`), GCC 15 or Clang 18 |
+| **Ninja** | Every preset uses the *Ninja Multi-Config* generator |
+| **SDL3** (optional) | Only for `run --window`. If missing, CMake fetches it via FetchContent (needs `git` and network) |
+
+Without SDL there is **no** external dependency at all. The executable works in terminal mode
+for everything else.
+
+<Callout type="tip" title="Do you need a window?">
+`--window` needs an SDL build. If you are only running console programs or testing the
+assembler, build without SDL: it is faster and downloads nothing.
+</Callout>
+
+## 2. Configure and build
+
+From the `Ceres/` folder:
+
+```shell title="Without SDL (GCC)"
+> cd Ceres
+> cmake --preset gcc
+> cmake --build --preset gcc-debug
+```
+
+```shell title="Without SDL (MSVC, from a VS developer prompt)"
+> cd Ceres
+> cmake --preset msvc
+> cmake --build --preset msvc-release
+```
+
+```shell title="With a window (SDL + IPO)"
+> cmake --preset gcc-sdl-ipo
+> cmake --build --preset gcc-sdl-ipo-release
+```
+
+The configure presets are:
+
+| Preset | Compiler | Folder |
+|---|---|---|
+| `msvc` / `msvc-ipo` | MSVC | `build/msvc` / `build/msvc-ipo` |
+| `ninja` | the environment's | `build/ninja` |
+| `gcc` / `gcc-ipo` | `g++` | `build/gcc` / `build/gcc-ipo` |
+| `clang` / `clang-ipo` | `clang++` | `build/clang` / `build/clang-ipo` |
+| `msvc-sdl-ipo` / `ninja-sdl-ipo` / `gcc-sdl-ipo` | + SDL | `build/*-sdl-ipo` |
+
+Each configure preset has build presets (`<preset>-debug` and `<preset>-release`; the SDL ones
+only `-release`).
+
+## 3. Where the executable lands
+
+```
+Ceres/build/<preset>/bin/<Debug|Release>/ceres.exe   (+ SDL3.dll if windowed)
+```
+
+With SDL, **`SDL3.dll` sits next to the executable**: if you copy it elsewhere, take the DLL
+with it or run it from that folder.
+
+## 4. CMake options
+
+| Option | Default | What it does |
+|---|---|---|
+| `CERES_BUILD_TESTS` | ON in the root project | Builds the test suites |
+| `CERES_ENABLE_SDL` | OFF | Window device (fetches SDL3 if missing) |
+| `CERES_ENABLE_IPO` | OFF | Link-time optimization in Release |
+| `CERES_ENABLE_ARCH_TUNING` | OFF | Tune to the local CPU (popcnt, bmi, AVX2) |
+| `CERES_WARNINGS_AS_ERRORS` | OFF | Turns warnings into errors |
+| `CERES_PGO_GENERATE` / `CERES_PGO_USE` | OFF | Two-pass PGO (GCC/Clang) |
+
+You can add any of them to the configure command:
+
+```shell
+> cmake --preset gcc -DCERES_ENABLE_ARCH_TUNING=ON
+```
+
+## 5. How it is organized inside
+
+The `ceres` executable links several static libraries:
+
+| Library | Contents |
+|---|---|
+| `ceres::core` | Types, ISA (opcodes, registers, disassembler), `.cres`/debug/memory-map formats |
+| `ceres::vm` | Memory, registers, execution engine, interrupts, BIOS |
+| `ceres::asm` | Assembler, macros, expressions, `.cobj` objects, `.car` archives, linker |
+| `ceres::devices` | Terminal, timer, disk, framebuffer, keyboard, mouse, display, gamepad, audio, peripherals, HostFs, blitter, DMA |
+| `ceres::debug` | Debug session, reverse execution, expression evaluator, server |
+| `ceres::driver` | Command line and execution |
+| `ceres::sdl` | Window backend (only with `CERES_ENABLE_SDL`) |
+
+## 6. Prove it works
+
+```shell title="Tests"
+> ctest --preset gcc-debug
+```
+
+```shell title="Check the executable"
+> Ceres/build/gcc/bin/Debug/ceres --help
+```
+
+<Callout type="warn" title="`--help` exits with code 2">
+The `ceres` tool prints usage to **stderr** and exits with status **2** (not 0). There is no
+`--version` option. It is on purpose; do not take it for an error.
+</Callout>
+
+<Quiz question="Where is CMakePresets.json in the CeresASM repository?"
+  options="At the repo root|Inside the Ceres/ folder|In docs/|It does not exist"
+  answer="1"
+  explain="The source tree is the Ceres/ subfolder; the presets and CMakeLists live there."></Quiz>

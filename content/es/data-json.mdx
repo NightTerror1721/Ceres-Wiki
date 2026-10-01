@@ -1,0 +1,116 @@
+# JSON sin heap
+
+`ceres/json.h` lee y escribe JSON **sin usar el heap**: tú le das el array de tokens y los
+buffers. Perfecto para un motor de juego que no quiere reservar memoria para leer un nivel.
+
+## Leer
+
+El texto **no se copia**: el parser crea una lista de *tokens* que apuntan a rangos del
+texto original.
+
+```c
+#include "ceres/json.h"
+
+const char* texto = "{\"nombre\":\"Ana\",\"nivel\":3,\"items\":[1,2,3]}";
+
+struct json_token t[64];
+int n = json_parse(texto, strlen(texto), t, 64);
+if (n < 0)
+{
+    printf("JSON inválido en el byte %d\n", json_error_at);
+    return 1;
+}
+
+int nivel = json_get_int(texto, t, json_find(texto, t, 0, "nivel"), 0);
+printf("nivel %d\n", nivel);
+
+int items = json_find(texto, t, 0, "items");
+int total = 0;
+for (int i = 0; i < t[items].size; i++)
+    total += json_get_int(texto, t, json_index(t, items, i), 0);
+printf("items: %d\n", total);
+```
+
+| Función | Qué hace |
+|---|---|
+| `json_parse(text, n, t, max)` | Cuenta de tokens, o `-1` (`errno`, `json_error_at`) |
+| `json_find(text, t, objeto, clave)` | Token del valor, o `-1` |
+| `json_index(t, array, i)` | Token del elemento i, o `-1` |
+| `json_get_string/equals` | Cadena (desescapada) o comparación |
+| `json_get_int/int64/float/bool` | Números y booleanos, con *fallback* |
+| `json_is_null(t, i)` | ¿Es `null`? |
+
+Token 0 es el documento entero. En un objeto, los tokens son clave, valor, clave, valor…;
+`size` cuenta claves (u elementos de un array) y `skip` cuántos tokens ocupa un valor
+(el siguiente tras él está en `i + t[i].skip`).
+
+<Callout type="info" title="RFC 8259 estricto, sin heap">
+Nada de comentarios, comas finales ni comillas simples. Anida hasta 64 niveles. El texto
+es tuyo: se conserva durante toda la lectura, así que no lo modifiques mientras usas los
+tokens.
+</Callout>
+
+## Escribir
+
+El escritor lleva las comas y las comillas por ti:
+
+```c
+char out[256];
+struct json_writer w;
+json_writer_init(&w, out, sizeof out);
+
+json_object_begin(&w);
+json_key(&w, "nombre");  json_put_string(&w, "Ana");
+json_key(&w, "nivel");   json_put_int(&w, 3);
+json_key(&w, "items");
+    json_array_begin(&w);
+    json_put_int(&w, 1); json_put_int(&w, 2); json_put_int(&w, 3);
+    json_array_end(&w);
+json_object_end(&w);
+
+int largo = json_writer_end(&w);        // -1 si no cupo o quedo a medias
+```
+
+Un `float` sin forma JSON (`NaN`, `inf`) se escribe como `null`. Las cadenas son UTF-8 y
+pasan tal cual, con `"`, `\` y los caracteres de control escapados.
+
+## Round-trip
+
+```c
+/* leer, modificar y volver a escribir */
+struct json_writer w;
+json_writer_init(&w, salida, sizeof salida);
+json_object_begin(&w);
+json_key(&w, "nivel");
+json_put_int(&w, nivel + 1);
+json_object_end(&w);
+```
+
+## Un fichero de nivel
+
+```c
+static int cargar_nivel(const char* texto)
+{
+    struct json_token t[128];
+    if (json_parse(texto, strlen(texto), t, 128) < 0) return -1;
+
+    int raiz = 0;
+    int nombre = json_find(texto, t, raiz, "nombre");
+    json_get_string(texto, t, nombre, nivel_nombre, sizeof nivel_nombre);
+
+    int spawn = json_find(texto, t, raiz, "spawn");
+    jugador.x = json_get_int(texto, t, json_find(texto, t, spawn, "x"), 0);
+    jugador.y = json_get_int(texto, t, json_find(texto, t, spawn, "y"), 0);
+    return 0;
+}
+```
+
+<Callout type="tip" title="Pásale el tamaño máximo real">
+Elige `max` tokens con holgura: si el JSON tiene más valores que tokens, `json_parse`
+devuelve `-1` con `ENOSPC`. Cada valor, clave y elemento gasta un token.
+</Quiz>
+
+<Quiz question="¿Cuánta memoria del heap usa json_parse?"
+  options="Reserva un DOM completo|Ninguna: escribe en el array de tokens que le das|Reserva por cada clave|Depende del nivel de anidamiento"
+  answer="1"
+  explain="El parser no reserva: usa el array de tokens y el buffer del llamador; el texto se conserva sin copiar."></Quiz>

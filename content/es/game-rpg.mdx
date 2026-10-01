@@ -1,0 +1,285 @@
+# Aventura RPG 2D
+
+Cerramos con un motor de **aventura por niveles**: mapa de baldosas, jugador, personajes,
+diálogo, transición entre mapas y partida guardada.
+
+<GameDemo kind="rpg" title="Aventura">
+Mueve al héroe con **flechas/WASD** y pulsa **E** delante de un personaje o un cartel para
+hablar.
+</GameDemo>
+
+## Arquitectura
+
+Un RPG no es muy distinto de Sokoban: rejilla + entidades + reglas. La diferencia es que
+hay **muchas entidades** y varias mapas. Separamos:
+
+- **Mapas**: rejillas de baldosas, con colisión y portales.
+- **Entidades**: jugador, NPCs, objetos. Un `slotmap` les da handles estables.
+- **Estado global**: mapa actual, inventario, banderas de la historia.
+
+## Los mapas
+
+```c title="rpg.c (mapas)"
+#include "stdio.h"
+#include "string.h"
+#include "ceres/gfx.h"
+#include "ceres/font.h"
+#include "ceres/sprite.h"
+#include "ceres/input.h"
+#include "ceres/game.h"
+#include "ceres/ds/slotmap.h"
+#include "ceres/save.h"
+
+#define TILE 16
+
+static const char* const mapa_pueblo[] = {
+    "TTTTTTTTTTTTTTT",
+    "T.............T",
+    "T..H.......N..T",
+    "T.............T",
+    "T....~~~~~....T",
+    "TTTTTTTTTTTTTTT",
+};
+```
+
+| Carácter | Baldosa | ¿Sólida? |
+|---|---|---|
+| `.` | Hierba | No |
+| `T` | Árbol | Sí |
+| `~` | Agua | Sí |
+| `H` | Casa | Sí |
+| `N` | Aldeano | No (entidad) |
+
+```c
+static int solida(char c) { return c == 'T' || c == '~' || c == 'H'; }
+```
+
+## Entidades con slotmap
+
+El jugador y los NPCs son entidades. El `slotmap` permite añadir y quitar sin invalidar
+handles.
+
+```c
+enum tipo { JUGADOR, ALDEANO, COFRE };
+
+struct entidad
+{
+    int x, y;
+    enum tipo tipo;
+    const char* dialogo;
+    struct sm_handle handle;
+};
+
+static struct slotmap entidades;      // de struct entidad
+```
+
+En un mapa pequeño basta con un vector, pero el `slotmap` escala a cientos de entidades que
+aparecen y desaparecen.
+
+## Cargar el mapa
+
+Recorremos la rejilla, marcamos colisiones y creamos las entidades.
+
+```c
+static char mapa[32][32];
+static int mapa_w, mapa_h;
+
+static void cargar_mapa(const char* const* lineas, int filas)
+{
+    mapa_h = filas;
+    mapa_w = (int)strlen(lineas[0]);
+
+    sm_clear(&entidades);   // en la practica: sm_free + sm_init
+
+    for (int y = 0; y < mapa_h; y++)
+        for (int x = 0; x < mapa_w; x++)
+        {
+            char c = lineas[y][x];
+            mapa[y][x] = c;
+
+            if (c == '@')
+            {
+                struct entidad e = { .x = x, .y = y, .tipo = JUGADOR };
+                sm_insert(&entidades, &e);
+            }
+            else if (c == 'N')
+            {
+                struct entidad e = { .x = x, .y = y, .tipo = ALDEANO,
+                                     .dialogo = "Ve al claro y vuelve." };
+                sm_insert(&entidades, &e);
+            }
+        }
+}
+```
+
+## Mover con colisión
+
+Sólo mueve si la baldosa destino no es sólida y no hay otra entidad.
+
+```c
+static void mover_jugador(struct entidad* yo, int dx, int dy)
+{
+    int nx = yo->x + dx, ny = yo->y + dy;
+    if (nx < 0 || ny < 0 || nx >= mapa_w || ny >= mapa_h) return;
+    if (solida(mapa[ny][nx])) return;
+    if (ocupada(nx, ny)) return;
+
+    yo->x = nx;
+    yo->y = ny;
+    comprobar_portal(yo);
+}
+```
+
+## Diálogo
+
+Un cuadro en la parte inferior; se abre al pulsar E mirando a una casilla con NPC.
+
+```c
+static char dialogo[64];
+static int  dialogo_frames;
+
+static void hablar(struct entidad* jugador, int dx, int dy)
+{
+    struct entidad* otro = entidad_en(jugador->x + dx, jugador->y + dy);
+    if (otro && otro->tipo == ALDEANO)
+    {
+        strlcpy(dialogo, otro->dialogo, sizeof dialogo);
+        dialogo_frames = 180;       // ~3 segundos a 60 FPS
+    }
+}
+```
+
+## Dibujar
+
+```c
+static void dibujar(struct entidad* jugador, int cam_x, int cam_y)
+{
+    gfx_clear(RGB(20, 40, 28));
+
+    for (int y = 0; y < mapa_h; y++)
+        for (int x = 0; x < mapa_w; x++)
+        {
+            int px = x * TILE - cam_x, py = y * TILE - cam_y;
+            char c = mapa[y][x];
+            if (c == 'T') gfx_circle_fill(px + 8, py + 6, 7, RGB(20, 90, 50));
+            else if (c == '~') gfx_rect_fill(px, py, TILE, TILE, RGB(27, 95, 168));
+            else if (c == 'H') gfx_rect_fill(px, py, TILE, TILE, RGB(120, 80, 50));
+        }
+
+    /* entidades */
+    for (int i = 0; i < sm_len(&entidades); i++)
+    {
+        /* sm_at no existe; recorre con handles conocidos o itera internamente */
+    }
+
+    /* jugador encima */
+    gfx_rect_fill(jugador->x * TILE - cam_x + 2, jugador->y * TILE - cam_y + 2,
+                  TILE - 4, TILE - 4, RGB(109, 148, 255));
+
+    if (dialogo_frames > 0)
+    {
+        gfx_rect_fill(4, 200 - 34, 320 - 8, 30, RGB(0, 0, 0));
+        gfx_rect(4, 200 - 34, 320 - 8, 30, RGB(120, 140, 220));
+        font_text(NULL, 10, 200 - 26, dialogo, RGB(230, 235, 245), 1);
+    }
+}
+```
+
+<Callout type="info" title="La cámara sigue al jugador">
+`cam_x = jugador->x * TILE - 160` (centrado) y recortado a los límites del mapa. Cuando el
+mapa es menor que la pantalla, `cam_x = 0`.
+</Callout>
+
+## Partida guardada
+
+```c
+struct partida { int mapa, jug_x, jug_y, oro, bandera; };
+
+static void guardar(struct partida* p)
+{
+    save_write("saves/aventura", 1, p, sizeof *p);
+}
+
+static int cargar(struct partida* p)
+{
+    unsigned int v;
+    return save_read("saves/aventura", &v, p, sizeof *p) == (long)sizeof *p && v == 1;
+}
+```
+
+## El bucle
+
+```c
+int main(void)
+{
+    if (gfx_init(320, 200) != 0) return 1;
+
+    sm_init(&entidades, sizeof(struct entidad));
+    cargar_mapa(mapa_pueblo, 6);
+
+    struct entidad* jugador = primer_jugador();
+
+    struct game g;
+    game_init(&g, 0);
+    game_pace_ms(&g, 16);
+    input_terminal_fallback(1);
+
+    while (g.running)
+    {
+        game_frame_begin(&g);
+        if (key_pressed(KEY_ESCAPE)) game_quit(&g);
+
+        int dx = 0, dy = 0, dir = 0;
+        if (key_pressed(KEY_LEFT))  { dx = -1; dir = 1; }
+        if (key_pressed(KEY_RIGHT)) { dx = 1;  dir = 2; }
+        if (key_pressed(KEY_UP))    { dy = -1; dir = 3; }
+        if (key_pressed(KEY_DOWN))  { dy = 1;  dir = 4; }
+        if (dx || dy) mover_jugador(jugador, dx, dy);
+
+        if (key_pressed(KEY_E))
+            hablar(jugador, dir == 1 ? -1 : dir == 2 ? 1 : 0,
+                           dir == 3 ? -1 : dir == 4 ? 1 : 0);
+
+        if (dialogo_frames > 0) dialogo_frames--;
+
+        dibujar(jugador, cam_x(jugador), cam_y(jugador));
+        gfx_present();
+        game_frame_end(&g);
+    }
+
+    sm_free(&entidades);
+    gfx_shutdown();
+    return 0;
+}
+```
+
+## Cómo crecer a partir de aquí
+
+<Steps>
+  <Step title="Mapas en ficheros">
+    Carga los mapas de `host:mapas/*.txt` o de un **pack**. Cada línea es una fila; una
+    línea vacía separa mapas.
+  </Step>
+  <Step title="Portales">
+    Un carácter `>` en el borde dispara `cargar_mapa(siguiente)`. Guarda el mapa actual en
+    `struct partida`.
+  </Step>
+  <Step title="Inventario y banderas">
+    Un `hset` de banderas ("tiene_llave", "hablo_con_anciano") y un pequeño inventario con
+    un `vector`. El diálogo cambia según las banderas.
+  </Step>
+  <Step title="Combate por turnos">
+    Máquina de estados por turnos: menú (atacar/objeto/huir), cálculo de daño con `rng`,
+    y el mismo `slotmap` para enemigos.
+  </Step>
+</Steps>
+
+<Callout type="tip" title="El mismo motor para muchos juegos">
+Rejilla + entidades + interacción es la base de Sokoban, un RPG, un roguelike o un juego de
+puzles por niveles. Cambia el dibujado y las reglas, no la arquitectura.
+</Callout>
+
+<Quiz question="¿Qué estructura de la librería da handles estables para entidades que nacen y mueren?"
+  options="vector|slotmap|strbuf|bitset"
+  answer="1"
+  explain="slotmap: cada handle lleva una generacion, asi que un handle viejo se detecta como obsoleto."></Quiz>

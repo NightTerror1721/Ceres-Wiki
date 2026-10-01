@@ -1,0 +1,120 @@
+# Teclado, ratón y gamepad
+
+Para un juego quieres saber no solo "qué teclas están pulsadas" sino "qué cambió desde el
+fotograma anterior". `ceres/input.h` consolida **teclado, ratón y gamepad** en un estado
+por fotograma.
+
+## El bucle de entrada
+
+```c
+#include "ceres/input.h"
+
+input_init();
+for (;;) {
+    input_update();                     // UNA vez por fotograma: drena los dispositivos
+
+    if (key_pressed(KEY_SPACE)) saltar();
+    if (key_down(KEY_LEFT))     x -= 2;
+    if (key_released(KEY_FIRE)) soltar();
+
+    /* raton y gamepad */
+}
+```
+
+`input_update` calcula los bordes: una tecla que baja y sube entre dos actualizaciones
+cuenta como *pulsada* ese fotograma (un toque rápido no se pierde), aunque `key_down` diga
+que ya no está.
+
+## Teclado
+
+```c
+key_down(scancode)       // mantenida ahora
+key_pressed(scancode)    // bajo desde la ultima actualizacion
+key_released(scancode)   // subio desde la ultima actualizacion
+key_any_pressed()        // el primer scancode que bajo este fotograma, o 0
+key_to_ascii(sc, shift)  // caracter para una tecla (0 si no tiene)
+```
+
+Los códigos están en `ceres/keys.h` (`KEY_A`…`KEY_Z`, `KEY_LEFT`, `KEY_F1`, `KEY_SPACE`…).
+La máquina usa los scancodes del estándar USB HID.
+
+<Callout type="tip" title="Sin ventana: fallback de terminal">
+Con un `ceres run` normal no hay ventana y el teclado no recibe nada. Con
+`input_terminal_fallback(1)`, `input_update()` lee también el terminal y convierte cada
+carácter en una pulsación de un fotograma. Tu juego escrito contra `key_pressed()` corre
+en un terminal sin cambios.
+</Callout>
+
+## Ratón
+
+```c
+mouse_pos_x();  mouse_pos_y();          // posicion absoluta
+mouse_move_x(); mouse_move_y();         // movimiento de este fotograma
+mouse_scroll();                          // rueda
+mouse_btn_down(MOUSE_BTN_LEFT);          // cualquier boton del mask, pulsado
+mouse_btn_pressed(mask);
+mouse_btn_released(mask);
+```
+
+Botones: `MOUSE_BTN_LEFT`, `MOUSE_BTN_RIGHT`, `MOUSE_BTN_MIDDLE`.
+
+## Gamepad
+
+```c
+pad_down(GP_BTN_SOUTH);                // TODOS los botones del mask, mantenidos
+pad_pressed(GP_BTN_EAST);              // CUALQUIERA de ellos bajo este fotograma
+pad_released(mask);
+pad_axis(PAD_AXIS_LEFT_X);             // -1.0..1.0 con zona muerta
+```
+
+Ejes: `PAD_AXIS_LEFT_X/Y`, `PAD_AXIS_RIGHT_X/Y`, `PAD_AXIS_LEFT_TRIGGER`,
+`PAD_AXIS_RIGHT_TRIGGER`. Botones: `GP_BTN_SOUTH/EAST/WEST/NORTH`, `GP_BTN_DPAD_*`,
+`GP_BTN_START/BACK`, hombros, sticks.
+
+## Leer pulsaciones de verdad (menús, campos de texto)
+
+`input_update` es para un bucle de fotogramas. Para leer **lo que una persona teclea, una
+pulsación a la vez** (menús, escribir un nombre), usa `ceres/key.h`:
+
+```c
+#include "ceres/key.h"
+
+key_start();
+for (;;) {
+    int k = key_wait();                  // espera una pulsacion
+    if (k == KEYC_ESCAPE) break;
+    if (k == KEYC_UP) { /* ... */ }
+    if (k == 'q') break;
+}
+key_stop();                              // devuelve el terminal a modo linea
+```
+
+Una **pulsación** es un `int`: un carácter tecleado es su code point (una letra acentuada
+es un solo valor), y una tecla sin carácter es una constante `KEYC_*` muy por encima.
+`key_get()` es la versión que no bloquea (`KEYC_NONE` si no hay nada).
+
+<Callout type="warn" title="No mezcles key_wait con scanf/fgets sin key_stop">
+Mientras están activas las teclas en crudo, el terminal no edita líneas. Llama a
+`key_stop()` antes de volver a `scanf()` o `line_read()`. El anfitrión también restaura el
+terminal cuando el programa termina.
+</Callout>
+
+## Un patrón: estado de teclas para dos jugadores
+
+```c
+static int leer_jugador(int arriba, int abajo, int izquierda, int derecha)
+{
+    if (key_down(izquierda)) x--;
+    if (key_down(derecha))   x++;
+    if (key_down(arriba))    y--;
+    if (key_down(abajo))     y++;
+}
+```
+
+Los códigos de tecla también admiten `key_down(KEY_W)` además de las flechas, para
+esquemas de control clásicos.
+
+<Quiz question="¿Qué función devuelve un caracter tecleado como code point, una pulsacion a la vez?"
+  options="getchar_nb|key_wait|input_update|pad_pressed"
+  answer="1"
+  explain="key_wait entrega las pulsaciones en el orden en que se teclean; para las teclas sin carácter devuelve KEYC_*."></Quiz>

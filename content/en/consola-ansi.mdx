@@ -1,0 +1,117 @@
+# ANSI: colour and cursor
+
+The terminal forwards bytes as they are to the host's terminal, so ANSI escape sequences
+work wherever the host understands them (Windows Terminal, VS Code, most Unix terminals).
+`ceres/ansi.h` wraps them.
+
+## Clear and move the cursor
+
+```c
+#include "ceres/ansi.h"
+
+ansi_clear();            // clear the screen and go home
+ansi_goto(1, 1);         // column, row (1-based)
+ansi_home();
+ansi_hide_cursor();
+ansi_show_cursor();
+ansi_save_cursor();
+ansi_restore_cursor();
+ansi_up(3);  ansi_down(3);  ansi_left(5);  ansi_right(5);
+ansi_clear_line();
+```
+
+## Colour
+
+```c
+ansi_fg(ANSI_RED);
+ansi_bg(ANSI_BLACK);
+printf("red text\n");
+ansi_fg256(208);         // the 256-colour palette
+printf(ANSI_RESET);
+```
+
+Constants: `ANSI_BLACK`, `ANSI_RED`, `ANSI_GREEN`, `ANSI_YELLOW`, `ANSI_BLUE`,
+`ANSI_MAGENTA`, `ANSI_CYAN`, `ANSI_WHITE`. There are also `ANSI_BOLD`, `ANSI_RESET`,
+`ANSI_CLEAR` and `ANSI_HOME` as strings.
+
+## Example: a progress bar in place
+
+```c title="progress.c"
+#include "stdio.h"
+#include "ceres/ansi.h"
+
+int main(void)
+{
+    ansi_hide_cursor();
+    for (int pct = 0; pct <= 100; pct += 5)
+    {
+        ansi_goto(1, 1);
+        ansi_clear_line();
+        printf("Loading [");
+        for (int i = 0; i < 20; i++)
+            putchar(i * 5 < pct ? '#' : '.');
+        printf("] %3d%%", pct);
+        fflush(stdout);              // nothing to flush: stdout is unbuffered
+    }
+    ansi_show_cursor();
+    putchar('\n');
+    return 0;
+}
+```
+
+<Callout type="info" title="ansi vs. the text framebuffer">
+`ansi.h` draws on the **terminal** with escape sequences. If you prefer a character grid
+with per-cell colours shown as an image in a window, use the **text framebuffer**
+(`ceres/textfb.h`). For sprites and pixels, the **display** (`ceres/display.h`).
+</Callout>
+
+## Colouring a console game's text
+
+```c
+static void title(const char* t)
+{
+    ansi_clear();
+    ansi_fg(ANSI_CYAN);
+    ansi_goto(1, 1);
+    puts(t);
+    ansi_fg(ANSI_WHITE);
+}
+```
+
+## A coloured board
+
+```c
+#include "ceres/ansi.h"
+#include "stdio.h"
+
+int main(void)
+{
+    ansi_clear();
+    for (int row = 0; row < 8; row++)
+    {
+        ansi_goto(1, row + 1);
+        for (int col = 0; col < 8; col++)
+        {
+            int light = (row + col) % 2;
+            ansi_bg(light ? ANSI_YELLOW : ANSI_MAGENTA);
+            putchar(' ');
+            putchar(' ');
+        }
+        ansi_bg(ANSI_BLACK);
+    }
+    ansi_goto(1, 10);
+    ansi_fg(ANSI_WHITE);
+    puts("board");
+    return 0;
+}
+```
+
+<Callout type="tip" title="Colour is not always there">
+A pipe or a redirection may not interpret the sequences. Do not use colour as the only way
+to convey information: it is decoration.
+</Callout>
+
+<Quiz question="What does ansi_goto(1, 1) do?"
+  options="Clears the screen|Moves the cursor to the top-left corner|Sets red colour|Resets the cursor"
+  answer="1"
+  explain="ansi_goto(column, row) is 1-based, like the escape sequence itself."></Quiz>

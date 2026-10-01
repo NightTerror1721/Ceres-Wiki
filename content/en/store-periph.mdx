@@ -1,0 +1,115 @@
+# Sticks and cartridges
+
+The machine has **4 peripheral ports** (`0xFF0A0000`): where a person plugs in a USB stick or
+a game cartridge while the program runs.
+
+## What can be in a port
+
+| Type | Constant | Writable |
+|---|---|---|
+| Empty | `PERIPH_NONE` | — |
+| Storage (stick) | `PERIPH_STORAGE` | Yes (unless the host protects it) |
+| Cartridge | `PERIPH_CARTRIDGE` | No (read-only) |
+
+Each port is connected from the command line:
+
+```shell
+> ceres run game.cres --port 0=stick.img --cart 1=level1.cart
+```
+
+or at run time (dragging a file onto the window, or from the debugger).
+
+## Querying the ports
+
+```c
+#include "ceres/periph.h"
+
+int ports = periph_ports();                  // usually 4
+if (periph_present(0))
+{
+    int type = periph_type(0);               // PERIPH_STORAGE
+    int protected = periph_protected(0);     // 1 if it cannot be written
+    unsigned int sectors = periph_sectors(0);
+    unsigned int id = periph_id(0);          // same medium, same id
+}
+```
+
+## Reading and writing sectors
+
+512-byte sectors, like the disk:
+
+```c
+unsigned char sector[PERIPH_SECTOR_SIZE];
+periph_read(0, 0, sector);                     // sector 0
+periph_write(0, 1, data);                      // fails on a cartridge
+periph_read_n(0, 0, buffer, 16);               // 16 sectors in a row
+periph_flush(0);                               // save the changes to its file
+periph_eject(0);                               // "pull the medium out"
+```
+
+All return `0` or `-1` (nonexistent port, empty, sector out of range, write to a
+cartridge…).
+
+## Connection events
+
+Every connection or disconnection is an **event**. Media connected before startup already
+have their event waiting.
+
+```c
+struct periph_event ev;
+while (periph_next_event(&ev))
+{
+    if (ev.kind == PERIPH_CONNECTED && periph_type(ev.port) == PERIPH_STORAGE)
+        printf("stick connected on port %d (%u sectors)\n",
+               ev.port, periph_sectors(ev.port));
+}
+```
+
+Or wait for one (timeout in milliseconds; `0` = forever):
+
+```c
+if (periph_wait(&ev, 5000))
+    printf("event on port %d\n", ev.port);
+```
+
+Each event also raises interrupt **23** (`IRQ_PERIPH`), in case your program would rather be
+woken.
+
+<Callout type="tip" title="How to mount the cartridge as a filesystem">
+With `fs_mount_port(1)` the cartridge in port 1 is mounted as volume **`cart1`** and you can
+use `fopen("cart1:/level.dat", "r")` like any CeresFS. See **Host files** and **The disk and
+CeresFS**.
+</Callout>
+
+## A resource cartridge
+
+The **resource pack** format (`ceres/pack.h`) reads directly from a port, and its tool
+`mkpack.js` pads the file to whole sectors so it can be plugged in as a cartridge:
+
+```c
+#include "ceres/pack.h"
+
+struct pack p;
+if (pack_open_port(&p, 1) == 0)
+{
+    struct gfx_surface* hero = pack_image(&p, "art/hero.qoi", RGB(255,0,255));
+    char* level = pack_load(&p, "levels/one.txt", NULL);
+    pack_close(&p);
+}
+```
+
+## A portable save
+
+```c
+void save_to_stick(int port, const void* data, unsigned int n)
+{
+    unsigned int sectors = (n + PERIPH_SECTOR_SIZE - 1) / PERIPH_SECTOR_SIZE;
+    periph_write_n(port, 0, data, sectors);
+    periph_flush(port);       // keep the host file up to date
+}
+```
+
+<Quiz question="Can you write to a cartridge?"
+  options="Yes, always|No, it is read-only|Only on port 0|Only 512 bytes"
+  answer="1"
+  explain="A cartridge is PERIPH_CARTRIDGE, read-only; periph_write returns -1."></Quiz>

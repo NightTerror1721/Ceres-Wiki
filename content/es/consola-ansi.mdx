@@ -1,0 +1,118 @@
+# ANSI: color y cursor
+
+El terminal reenvía los bytes tal cual al terminal del anfitrión, así que las secuencias
+de escape ANSI funcionan donde el anfitrión las entienda (Windows Terminal, VS Code, la
+mayoría de terminales Unix). `ceres/ansi.h` las envuelve.
+
+## Limpiar y mover el cursor
+
+```c
+#include "ceres/ansi.h"
+
+ansi_clear();            // borra la pantalla y va a casa
+ansi_goto(1, 1);         // columna, fila (1-based)
+ansi_home();
+ansi_hide_cursor();
+ansi_show_cursor();
+ansi_save_cursor();
+ansi_restore_cursor();
+ansi_up(3);  ansi_down(3);  ansi_left(5);  ansi_right(5);
+ansi_clear_line();
+```
+
+## Color
+
+```c
+ansi_fg(ANSI_RED);
+ansi_bg(ANSI_BLACK);
+printf("texto rojo\n");
+ansi_fg256(208);         // paleta de 256 colores
+printf(ANSI_RESET);
+```
+
+Constantes: `ANSI_BLACK`, `ANSI_RED`, `ANSI_GREEN`, `ANSI_YELLOW`, `ANSI_BLUE`,
+`ANSI_MAGENTA`, `ANSI_CYAN`, `ANSI_WHITE`. También hay `ANSI_BOLD`, `ANSI_RESET`,
+`ANSI_CLEAR` y `ANSI_HOME` como cadenas.
+
+## Ejemplo: una barra de progreso en su sitio
+
+```c title="progress.c"
+#include "stdio.h"
+#include "ceres/ansi.h"
+
+int main(void)
+{
+    ansi_hide_cursor();
+    for (int pct = 0; pct <= 100; pct += 5)
+    {
+        ansi_goto(1, 1);
+        ansi_clear_line();
+        printf("Cargando [");
+        for (int i = 0; i < 20; i++)
+            putchar(i * 5 < pct ? '#' : '.');
+        printf("] %3d%%", pct);
+        fflush(stdout);              // nada que volcar: stdout no tiene buffer
+    }
+    ansi_show_cursor();
+    putchar('\n');
+    return 0;
+}
+```
+
+<Callout type="info" title="ansi vs. framebuffer de texto">
+`ansi.h` dibuja en el **terminal** con secuencias de escape. Si prefieres una rejilla de
+caracteres con colores por celda y que se muestre como una imagen en la ventana, usa el
+**framebuffer de texto** (`ceres/textfb.h`). Para juegos con sprites y píxeles, el
+**display** (`ceres/display.h`).
+</Callout>
+
+## Colorear el texto de un juego de consola
+
+```c
+static void titulo(const char* t)
+{
+    ansi_clear();
+    ansi_fg(ANSI_CYAN);
+    ansi_goto(1, 1);
+    puts(t);
+    ansi_fg(ANSI_WHITE);
+}
+```
+
+## Un tablero con color
+
+```c
+#include "ceres/ansi.h"
+#include "stdio.h"
+
+int main(void)
+{
+    ansi_clear();
+    for (int fila = 0; fila < 8; fila++)
+    {
+        ansi_goto(1, fila + 1);
+        for (int col = 0; col < 8; col++)
+        {
+            int claras = (fila + col) % 2;
+            ansi_bg(claras ? ANSI_YELLOW : ANSI_MAGENTA);
+            putchar(' ');
+            putchar(' ');
+        }
+        ansi_bg(ANSI_BLACK);
+    }
+    ansi_goto(1, 10);
+    ansi_fg(ANSI_WHITE);
+    puts("tablero");
+    return 0;
+}
+```
+
+<Callout type="tip" title="El color no siempre está">
+Un pipe o un redireccionamiento pueden no interpretar las secuencias. No las uses como
+única forma de transmitir información: el color es un adorno.
+</Callout>
+
+<Quiz question="¿Qué hace ansi_goto(1, 1)?"
+  options="Borra la pantalla|Mueve el cursor a la esquina superior izquierda|Pone color rojo|Resetea el cursor"
+  answer="1"
+  explain="ansi_goto(columna, fila) es 1-based, como la propia secuencia ANSI."></Quiz>

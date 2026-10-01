@@ -1,0 +1,140 @@
+# The game loop
+
+A game is, in essence, a loop: **read input → update → draw → wait for the next frame**.
+`ceres/game.h` gives you that skeleton with two ways to measure time.
+
+## The skeleton
+
+```c
+#include "ceres/game.h"
+
+struct game g;
+game_init(&g, 200000);          // one frame = 200000 instructions
+
+while (g.running)
+{
+    game_frame_begin(&g);       // input_update() and the start mark
+
+    update(&g);
+    draw();
+
+    game_frame_end(&g);         // wait out the rest of the frame
+}
+```
+
+Or with functions:
+
+```c
+game_run(&g, update, draw, &state);
+```
+
+`game_quit(&g)` sets `g.running` to 0.
+
+## Two ways to measure time
+
+Ceres does not use a fixed clock: you choose.
+
+<Tabs>
+  <Tab label="Instruction budget">
+The default mode. A frame is a number of **ticks** (instructions) and it waits with a spin on
+`timer_ticks()`.
+
+```c
+game_init(&g, 200000);          // 200k instructions per frame
+/* game_frame_end spins until the budget is used up */
+```
+
+It is **deterministic**: the same program does exactly the same thing on every run. It is what
+tests and reproducible games want, and what lets you debug backwards. `game_over_budget(&g)`
+tells you whether the last frame overspent.
+  </Tab>
+  <Tab label="Real time (sleeping)">
+For a game that must run at a steady speed on a real clock. A frame lasts `ms` milliseconds
+from its start; its own work counts, and a late frame is not made up for.
+
+```c
+game_init(&g, 0);
+game_pace_ms(&g, 16);           // ~60 FPS, sleeping with the alarm (no CPU burned)
+```
+
+It needs no interrupt handler.
+  </Tab>
+  <Tab label="Real time (spinning)">
+Like the previous one but **spinning** on the nanosecond clock, without sleeping. It needs no
+`irq` module; it keeps the host busy and the frame ends at the clock's step rather than the
+sleep's.
+
+```c
+game_init(&g, 0);
+game_pace_real(&g, 16);
+```
+  </Tab>
+</Tabs>
+
+<Callout type="info" title="Which to use when">
+| You want… | Use |
+|---|---|
+| Reproducible tests, identical physics | instruction budget |
+| A 60 FPS game, portable, little CPU | `game_pace_ms` |
+| A 60 FPS game without depending on the irq module | `game_pace_real` |
+</Callout>
+
+## The order matters
+
+```
+game_frame_begin()   → drains keyboard/mouse/gamepad and computes the edges ("just pressed")
+   update()          → uses key_pressed/key_down, moves things
+   draw()            → gfx_clear, paint, gfx_present
+game_frame_end()     → waits for the next frame
+```
+
+A reliable pattern is a **state machine** inside `update`: `TITLE`, `PLAYING`, `PAUSED`,
+`GAMEOVER`.
+
+```c
+enum state { TITLE, PLAYING, PAUSED, GAMEOVER };
+
+static void update(struct game* g, struct game_state* s)
+{
+    switch (s->phase)
+    {
+    case TITLE:
+        if (key_pressed(KEY_ENTER)) s->phase = PLAYING;
+        break;
+    case PLAYING:
+        if (key_pressed(KEY_ESCAPE)) s->phase = PAUSED;
+        move(s);
+        break;
+    case PAUSED:
+        if (key_pressed(KEY_ESCAPE)) s->phase = PLAYING;
+        break;
+    case GAMEOVER:
+        if (key_pressed(KEY_ENTER)) restart(s);
+        break;
+    }
+}
+```
+
+## Physics with a fixed step
+
+Even if your frame is not deterministic, you can make the **physics** deterministic by
+updating in fixed tick steps. A classic accumulator:
+
+```c
+s->accumulator += elapsed_ticks;
+while (s->accumulator >= STEP) {
+    physics_step(s);
+    s->accumulator -= STEP;
+}
+```
+
+<Callout type="tip" title="Start with the instruction budget">
+While developing, use `game_init(&g, N)`. Your game will be reproducible, tests will compare
+outputs and you can rewind with the debugger. When it is ready, switch to `game_pace_ms` to
+play comfortably.
+</Callout>
+
+<Quiz question="Which mode makes the same program do exactly the same thing on every run?"
+  options="game_pace_ms|game_pace_real|An instruction budget (game_init with ticks)|The wall clock"
+  answer="2"
+  explain="The tick counter is the number of instructions, deterministic; the real-time modes depend on the host."></Quiz>

@@ -1,0 +1,132 @@
+# Building the standard library
+
+The **standard library** is this repository. It is built once per optimization level and
+packed into an **archive** (`libceres.car`) that your programs link without recompiling it.
+
+## 1. Requirements
+
+You only need the two already-built tools:
+
+- **`ceresc`** (from Ceres-C) to turn the `.c` files into `.casm`.
+- **`ceres`** (from CeresASM) to assemble (`asm -c`) and archive (`ar`).
+
+The scripts look for them in this order:
+
+<Steps>
+  <Step title="Environment variables">
+    **`CERESC`** (path to the executable) and **`CERES_PATH`** (the folder holding it, or the
+    executable itself). `CERES_DIR`, its older name, works too.
+  </Step>
+  <Step title="Sibling checkouts">
+    `../../Ceres-C` and `../../CeresASM` relative to this folder.
+  </Step>
+  <Step title="PATH">
+    If they are on the `PATH`, they are used.
+  </Step>
+</Steps>
+
+## 2. Build it
+
+```shell title="From the library root"
+> make                 # builds at -O0, -O1 and -O2, and verifies
+```
+
+or run the script directly:
+
+```shell
+> powershell -File tools/mklib.ps1
+> powershell -File tools/mklib.ps1 -Levels 2      # only -O2
+> powershell -File tools/mklib.ps1 -NoVerify      # just the archives
+```
+
+<Output title="What it does per level">
+-O0 : compiling 100 C files
+-O0 : assembling 107 units
+build/lib/O0/libceres.car: 107 objects, ... bytes
+... (repeated for -O1 and -O2)
+done
+</Output>
+
+The script, for each level:
+
+1. **Compiles** every `src/**/*.c` to `.casm` with `ceresc` (and writes the declarations).
+2. **Assembles** every `.casm` (generated and the hand-written ones in `asm/`) to a `.cobj`.
+3. **Archives** all the objects into `libceres.car` with `ceres ar`.
+4. **Verifies** (only at `-O2`) by building two programs against the archive and running them.
+
+## 3. Where it lands
+
+```
+build/lib/O0/libceres.car        build/lib/O0/libceres.decls.casm
+build/lib/O1/...                 build/lib/O2/...
+build/libceres.car               (a copy of the -O2 one, where it always was)
+```
+
+- **`libceres.car`** is the object archive.
+- **`libceres.decls.casm`** are the declarations, what you pass to `ceresc --decls`.
+
+<Callout type="info" title="The archive only brings in what you use">
+Unlike objects given by name, **archive members** are linked only if they resolve a name
+nothing else defines. A program that calls one routine carries that routine; modules that bind
+interrupt vectors (`irq`, `fault`, `mmu`) stay out unless you ask for them.
+</Callout>
+
+## 4. Use it
+
+```shell title="Build a program against the archive"
+> ceresc prog.c build/lib/O2/libceres.car --decls build/lib/O2/libceres.decls.casm -I include -O2 --run
+```
+
+The three key arguments: the `.car` (the library), `--decls` (its declarations) and
+`-I include` (its headers). None of the library is compiled again.
+
+## 5. Optional modules with `// USE:`
+
+Some modules are requested by a line at the top of the source:
+
+```c
+// USE: irq        // alarm and a pausing game loop
+// USE: fault      // fault reports
+// USE: mmu        // paging from C
+```
+
+The test script adds them to the `ceresc` command line. **A program that binds its own vector
+must not link the module that also owns it** (the linker allows one owner per vector).
+
+## 6. Test the library
+
+```shell title="Full suite"
+> make test
+> powershell -File tools/runtests.ps1
+```
+
+Every test is compiled and run at **-O0, -O1 and -O2**, and its output must be **identical byte
+for byte** at all three. Also:
+
+```shell
+> make headers                        # each header compiles on its own
+> make test-test_malloc               # a single test
+> make update-test_malloc             # rewrite the .expected (review it!)
+```
+
+<Callout type="warn" title="The tests compare bytes">
+One extra NUL (say, a word store to a byte register) fails a test. That is exactly the point:
+the machine is deterministic, and so must the output be.
+</Callout>
+
+## 7. Rebuild the library with options
+
+The library's build settings live in `include/ceres/config.h` and are changed with `-D...`:
+
+```c
+#define CERES_ATEXIT_SLOTS       32
+#define CERES_HEAP_STACK_RESERVE 16384
+#define CERES_HEAP_DEBUG         0
+#define FS_MAX_OPEN              8
+#define TASK_MAX                 16
+```
+
+<Quiz question="What format is the library that programs link?"
+  options="libceres.cres|libceres.car|libceres.dll|libceres.casm"
+  answer="1"
+  explain=".car is the object archive; .cres is a program already linked."></Quiz>

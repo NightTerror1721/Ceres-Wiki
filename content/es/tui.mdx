@@ -1,0 +1,122 @@
+# Interfaces de texto (TUI)
+
+`ceres/tui.h` es una pequeña interfaz de usuario **dibujada en el framebuffer de texto**:
+ventanas con título, etiquetas, botones, barra de progreso, listas con scroll y un menú que
+lee teclas.
+
+## Iniciar y mostrar
+
+```c
+#include "ceres/tui.h"
+
+if (tui_init(44, 16) != 0) return 1;   // columnas, filas (usa fb_init por dentro)
+tui_clear();
+/* ... dibujar ... */
+tui_present();
+tui_shutdown();
+```
+
+Nada aquí es dueño de la pantalla: puedes mezclar llamadas de `tui_*` con las de `fb_*`.
+
+## Componentes
+
+```c
+tui_window(x, y, w, h, "Título");      // recuadro con título (w>=4, h>=2)
+tui_label(x, y, "texto");              // etiqueta
+tui_label_center(x, y, w, "centrado");
+tui_button(x, y, "[ Aceptar ]", enfocado);
+tui_progress(x, y, w, porcentaje);     // barra + " 42%"
+tui_status("barra inferior");          // toda la última fila
+```
+
+## Listas
+
+```c
+const char* items[] = { "uno", "dos", "tres", "cuatro", "cinco" };
+int top = 0;
+top = tui_list(x, y, w, rows, items, 5, seleccionado, top);
+```
+
+`tui_list` ajusta y devuelve la primera fila mostrada para que la selección quede visible:
+guárdalo y pásalo la próxima vez.
+
+## Menús que leen teclas
+
+```c
+const char* opciones[] = { "Nueva partida", "Cargar", "Opciones", "Salir" };
+int elegida = tui_menu(3, 4, "Menú principal", opciones, 4);
+if (elegida < 0) { /* cancelado o fin de entrada */ }
+```
+
+Teclas del menú: **w/k/flecha arriba** y **s/j/flecha abajo** mueven; **Home/End** van a
+los extremos; **PageUp/PageDown** una pantalla; **Enter/Espacio** eligen; **q/Escape** o el
+fin de la entrada cancelan. Redibuja y muestra en cada pulsación, y pide al anfitrión las
+teclas mientras se pulsan (así funcionan las flechas).
+
+<Callout type="info" title="El tema de color">
+Las constantes `TUI_FRAME`, `TUI_TITLE`, `TUI_SELECTED`, `TUI_BAR_FULL`, `TUI_BAR_EMPTY` y
+`TUI_STATUS` son atributos `FB_ATTR`. Cambia de aspecto dibujando con `fb_set_attr()`
+antes, o úsalas como referencia.
+</Callout>
+
+## Ejemplo: piedra, papel o tijera
+
+```c title="rps.c"
+#include "stdio.h"
+#include "ceres/tui.h"
+#include "ceres/rand.h"
+
+static const char* const jugadas[3] = { "piedra", "papel", "tijera" };
+
+static int juzgar(int p, int m)
+{
+    if (p == m) return 0;
+    return (p - m + 3) % 3 == 1 ? 1 : -1;   // 1 gana el jugador, -1 la maquina
+}
+
+int main(void)
+{
+    if (tui_init(40, 12) != 0) return 1;
+
+    struct rng r;
+    rng_seed_entropy(&r);
+    int gana = 0, pierde = 0, empata = 0;
+
+    for (;;)
+    {
+        tui_clear();
+        tui_window(1, 0, 38, 5, "Piedra, papel o tijera");
+        tui_label_center(2, 2, 36, "tu jugada");
+        tui_status("flechas: mover   enter: elegir   q: salir");
+        tui_present();
+
+        int p = tui_menu(3, 6, "Elige", jugadas, 3);
+        if (p < 0) break;
+
+        int m = rng_range(&r, 0, 2);
+        int r2 = juzgar(p, m);
+        if (r2 > 0) gana++; else if (r2 < 0) pierde++; else empata++;
+
+        tui_clear();
+        tui_window(1, 1, 38, 6, "Resultado");
+        char linea[48];
+        snprintf(linea, sizeof linea, "tu %s   maquina %s", jugadas[p], jugadas[m]);
+        tui_label_center(2, 3, 36, linea);
+        tui_label_center(2, 4, 36, r2 > 0 ? "ganas" : r2 < 0 ? "pierdes" : "empate");
+        snprintf(linea, sizeof linea, "tu %d   maquina %d   empates %d", gana, pierde, empata);
+        tui_label_center(2, 5, 36, linea);
+        tui_present();
+
+        const char* const otra[] = { "otra ronda", "salir" };
+        if (tui_menu(3, 8, "Otra?", otra, 2) != 0) break;
+    }
+
+    tui_shutdown();
+    return 0;
+}
+```
+
+<Quiz question="¿Qué devuelve tui_menu cuando el usuario cancela con q?"
+  options="0|El indice de la ultima opcion|-1|El caracter 'q'"
+  answer="2"
+  explain="Devuelve -1 al cancelar o al acabarse la entrada; si no, el indice elegido."></Quiz>

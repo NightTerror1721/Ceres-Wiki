@@ -1,0 +1,115 @@
+# Unicode: UTF-8 y wchar
+
+En Ceres, **UTF-8 es la codificación universal**: los fuentes, el terminal, los ficheros,
+las cadenas multibyte de `<stdlib.h>`/`<wchar.h>`/`<uchar.h>`. `MB_CUR_MAX` es 4.
+
+<Callout type="info" title="Latin-1 es lo que se ve">
+El framebuffer de texto y la fuente de píxeles muestran **Latin-1** (U+0000–U+00FF): las
+letras de las lenguas de Europa occidental, `¿`, `¡`, `ñ`, `€`… Un carácter por encima de
+U+00FF se dibuja como `?` en una celda y como una caja en la fuente.
+</Callout>
+
+## `ceres/utf8.h`
+
+```c
+#include "ceres/utf8.h"
+
+const char* p = "año";
+unsigned int cp;
+while ((cp = utf8_next(&p)) != 0)      // 'a', 'ñ' (U+00F1), 'o'
+    printf("U+%04X\n", cp);
+
+int len = utf8_decode("ñ", 2, &cp);    // 2 (bytes), cp = 0xF1
+char out[UTF8_MAX];
+int n = utf8_encode(0x1F600, out);     // 4 bytes (emoji)
+```
+
+| Función | Qué hace |
+|---|---|
+| `utf8_decode(s, n, &cp)` | Longitud (1–4) o `-1` si no es UTF-8 |
+| `utf8_encode(cp, out)` | Bytes escritos (sin NUL) o `0` |
+| `utf8_next(&s)` | Siguiente carácter; `U+FFFD` en bytes rotos |
+| `utf8_length(s)` | Número de caracteres |
+| `utf8_valid(s, n)` | ¿Son válidos todos los bytes? |
+| `utf8_offset(s, i)` | Dónde empieza el carácter i |
+| `utf8_width(cp)` | Bytes que ocupa cp |
+| `utf8_to_latin1(...)` / `latin1_to_utf8(...)` | Conversión (truncando sin partir) |
+
+La decodificación es **estricta**: se rechazan las formas largas (overlong), los
+*subrogados* y todo lo que pase de U+10FFFF. `utf8_next` nunca falla: los bytes inválidos
+se leen como el carácter de reemplazo y el puntero avanza uno.
+
+## `<wchar.h>` y `<uchar.h>`
+
+`wchar_t` es un `int` que guarda un **code point** (UTF-32). Los literales anchos `L"..."`,
+`u"..."` (UTF-16), `U"..."` (UTF-32) y `u8"..."` (UTF-8) tienen los tipos de `<uchar.h>`.
+
+```c
+#include "wchar.h"
+
+wchar_t ws[32];
+mbsrtowcs(ws, &utf8, 32, NULL);          // UTF-8 -> wide
+wcslen(ws);  wcscmp(ws, L"hola");  wcschr(ws, L'ñ');
+
+char utf8[64];
+wcsrtombs(utf8, &wp, sizeof utf8, NULL); // wide -> UTF-8
+```
+
+Y las conversiones carácter a carácter de `<uchar.h>`:
+
+```c
+mbstate_t st = { 0 };
+char* s = "ñ";
+char32_t cp;
+size_t usado = mbrtoc32(&cp, s, 2, &st);   // lee un carácter
+```
+
+<Callout type="warn" title="No hay wide stdio ni wcsftime">
+No se proporcionan `fwprintf`, `getwc`, etc. En su lugar, `printf` escribe `%lc`/`%ls`
+como UTF-8 y `scanf` los lee. `%ls` cuenta la precisión en **bytes**, sin partir un
+carácter por la mitad.
+</Callout>
+
+## En la práctica: una función que cuenta caracteres
+
+```c
+#include "stdio.h"
+#include "string.h"
+#include "ceres/utf8.h"
+
+int main(void)
+{
+    const char* texto = "¿Qué año?";
+    printf("%zu bytes, %zu caracteres\n",
+           strlen(texto), utf8_length(texto));
+    return 0;
+}
+```
+
+## En el framebuffer y la fuente
+
+`fb_text` y `font_text` toman UTF-8 y dibujan todo lo que quepa en Latin-1:
+
+```c
+#include "ceres/textfb.h"
+fb_text(0, 0, "¿Qué año?");        // 9 celdas (los caracteres, no los bytes)
+fb_text_width("¿Qué año?");        // 9
+```
+
+`fb_put` guarda un byte (un carácter Latin-1); `fb_put_char` toma un code point.
+
+## Ancho en columnas (para alinear)
+
+No hay base de datos de anchos Unicode, pero para Latin-1 basta una tabla sencilla:
+
+```c
+static int ancho(unsigned int cp)
+{
+    return cp == 0 ? 0 : 1;    // Latin-1: todos los caracteres ocupan una celda
+}
+```
+
+<Quiz question="¿Qué devuelve utf8_decode ante una forma larga (overlong)?"
+  options="La longitud y el code point|0|1|-1"
+  answer="3"
+  explain="El decodificador es estricto: una forma larga no es UTF-8 válido, y devuelve -1."></Quiz>

@@ -1,0 +1,129 @@
+# Control de flujo
+
+Ceres-C soporta todo el control de flujo que esperarías de C: condicionales, bucles,
+`switch`, `goto`, `break` y `continue`.
+
+## Condicionales
+
+```c
+if (salud <= 0)
+    game_over();
+else if (salud < 20)
+    puts("¡cuidado!");
+else
+    puts("todo bien");
+```
+
+El operador ternario también existe:
+
+```c
+int max = a > b ? a : b;
+```
+
+## Bucles
+
+```c
+for (int i = 0; i < 10; i++)          // declaracion en el for permitida
+    printf("%d ", i);
+
+while (running) { update(); draw(); }
+
+do { paso(); } while (quedan());
+```
+
+## `switch`
+
+```c
+switch (tecla)
+{
+case 'w': y--; break;
+case 's': y++; break;
+case 'a': x--; break;
+case 'd': x++; break;
+default:  break;
+}
+```
+
+<Callout type="tip" title="El compilador genera saltos de tabla">
+Con `-O1`/`-O2`, un `switch` con **5 o más** casos y densidad suficiente se convierte en
+una **jump table** en `.rodata` más un salto indirecto. Lo puedes ver en el CASM o con
+`--stats`.
+</Callout>
+
+También se admite el rango GNU:
+
+```c
+switch (nivel)
+{
+case 1 ... 5:   puts("facil");   break;
+case 6 ... 10:  puts("normal");  break;
+default:        puts("dificil"); break;
+}
+```
+
+## `break`, `continue` y `goto`
+
+```c
+for (int y = 0; y < H; y++)
+{
+    for (int x = 0; x < W; x++)
+        if (mapa[y][x] == SALIDA)
+            goto encontrado;      // sale de los dos bucles
+}
+
+encontrado:
+puts("salida hallada");
+
+for (int i = 0; i < n; i++)
+{
+    if (i % 2) continue;          // salta esta vuelta
+    if (i == limite) break;       // termina el bucle
+}
+```
+
+## Condiciones y el valor de verdad
+
+En Ceres, como en C: **0 es falso**, cualquier otra cosa es verdadero. Un puntero no nulo
+es verdadero.
+
+```c
+if (p) { /* p != NULL */ }
+if (count) { /* count != 0 */ }
+```
+
+<Callout type="info" title="Todo se mide en instrucciones">
+Los bucles pequeños y calientes importan: el compilador **baja idioms de bucle** a las
+instrucciones de bloque de la máquina (`mcpy`, `mset`, `mscan`). Un `for` que copia un
+array se convierte en una sola instrucción `mcpy`. Escribe el bucle claro; el compilador
+lo acelera.
+</Callout>
+
+## Ejemplo: una criba de primos
+
+```c
+#include "stdio.h"
+#include "string.h"
+
+int main(void)
+{
+    char es_primo[100];
+    memset(es_primo, 1, sizeof es_primo);
+    es_primo[0] = es_primo[1] = 0;
+
+    for (int i = 2; i * i < 100; i++)
+        if (es_primo[i])
+            for (int j = i * i; j < 100; j += i)
+                es_primo[j] = 0;
+
+    for (int i = 0; i < 100; i++)
+        if (es_primo[i])
+            printf("%d ", i);
+    putchar('\n');
+    return 0;
+}
+```
+
+<Quiz question="¿Con cuántos casos, como mínimo, compila un switch a una jump table a -O2?"
+  options="3|5|8|20"
+  answer="1"
+  explain="A partir de 5 casos con densidad suficiente; si no, genera un árbol o una cadena de comparaciones."></Quiz>
