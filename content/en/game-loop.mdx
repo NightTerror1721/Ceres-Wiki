@@ -134,6 +134,61 @@ outputs and you can rewind with the debugger. When it is ready, switch to `game_
 play comfortably.
 </Callout>
 
+## Pairing it with the framebuffer
+
+`game.h` is only the **timing loop**: it draws nothing. The drawing goes in the `draw`
+callback, and the pixel framebuffer (`ceres/fb.h`, video level V1) fits it directly. `game`
+does **not** choose a video level, show or hide the cursor, or set raw input - you do that
+before the loop:
+
+```c
+#include "ceres/video.h"
+#include "ceres/fb.h"
+#include "ceres/game.h"
+#include "ceres/terminal.h"
+
+static void update(struct game* g, void* ctx) { /* logic; game_quit(g) to leave */ }
+
+static void draw(struct game* g, void* ctx)
+{
+    fb_clear(0x00102040);
+    /* ...pixels... */
+    fb_present();                 // swaps the buffers and waits for the VBlank
+}
+
+int main(void)
+{
+    video_set_level(VIDEO_BITMAP);       // V1: the bitmap plane
+    video_set_resolution(320, 240);
+    term_show_cursor(0);                 // no terminal cursor
+    term_set_raw(1);                     // every key as it is pressed
+    if (fb_init(320, 240) != 0) return 1;
+
+    struct game g;
+    game_init(&g, 200000);               // the game's frame budget, in CPU cycles
+    game_run(&g, update, draw, 0);       // until game_quit
+
+    fb_shutdown();
+    term_set_raw(0);
+    term_show_cursor(1);
+    return 0;
+}
+```
+
+<Callout type="info" title="fb_present already waits for the VBlank">
+`fb_present()` swaps the buffers at the next vertical blank and waits for it, so a game drawn
+with `fb_*` is paced by the screen whatever `game` does. `game_pace_vblank(&g, 1)` makes the
+frame end at that same blank; with `game_pace_ms`/`game_pace_real` the frame is `ms`
+milliseconds of machine time instead.
+</Callout>
+
+<Callout type="warn" title="input_update is not raw keys">
+`game_frame_begin()` calls `input_update()`, which reads the **input module**
+(`ceres/input.h`: keyboard, mouse, gamepad as continuous state and edges), not `key_*`. Set
+`term_set_raw(1)` if you want raw keys, but read them with `input_*` in `update`, or call
+`key_get()` after `game_frame_begin()`. Never mix raw mode with `scanf`/`fgets`.
+</Callout>
+
 <Quiz question="Which mode makes the same program do exactly the same thing on every run?"
   options="game_pace_ms|game_pace_real|An instruction budget (game_init with ticks)|The wall clock"
   answer="2"

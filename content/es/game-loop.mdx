@@ -135,6 +135,61 @@ compararán salidas y podrás rebobinar con el depurador. Cuando esté listo, ca
 `game_pace_ms` para jugar cómodo.
 </Callout>
 
+## Combinarlo con el framebuffer
+
+`game.h` es solo el **bucle de tiempo**: no dibuja nada. El dibujo va en el callback `draw`, y el
+framebuffer de píxeles (`ceres/fb.h`, nivel de vídeo V1) encaja directo. `game` **no** elige un
+nivel de vídeo, ni muestra u oculta el cursor, ni pone el modo raw — eso lo haces tú antes del
+bucle:
+
+```c
+#include "ceres/video.h"
+#include "ceres/fb.h"
+#include "ceres/game.h"
+#include "ceres/terminal.h"
+
+static void update(struct game* g, void* ctx) { /* lógica; game_quit(g) para salir */ }
+
+static void draw(struct game* g, void* ctx)
+{
+    fb_clear(0x00102040);
+    /* ...píxeles... */
+    fb_present();                 // intercambia los búferes y espera el VBlank
+}
+
+int main(void)
+{
+    video_set_level(VIDEO_BITMAP);       // V1: el plano bitmap
+    video_set_resolution(320, 240);
+    term_show_cursor(0);                 // sin cursor del terminal
+    term_set_raw(1);                     // cada tecla al momento
+    if (fb_init(320, 240) != 0) return 1;
+
+    struct game g;
+    game_init(&g, 200000);               // el presupuesto de frame del juego, en ciclos de CPU
+    game_run(&g, update, draw, 0);       // hasta game_quit
+
+    fb_shutdown();
+    term_set_raw(0);
+    term_show_cursor(1);
+    return 0;
+}
+```
+
+<Callout type="info" title="fb_present ya espera al VBlank">
+`fb_present()` intercambia los búferes en el siguiente VBlank y espera a él, así un juego
+dibujado con `fb_*` queda pautado por la pantalla haga lo que haga `game`. `game_pace_vblank(&g, 1)`
+hace que el frame termine en ese mismo blank; con `game_pace_ms`/`game_pace_real` el frame dura
+`ms` milisegundos de tiempo de máquina.
+</Callout>
+
+<Callout type="warn" title="input_update no son teclas raw">
+`game_frame_begin()` llama a `input_update()`, que lee el **módulo de input**
+(`ceres/input.h`: teclado, ratón y gamepad como estado continuo y flancos), no `key_*`. Pon
+`term_set_raw(1)` si quieres teclas raw, pero léelas con `input_*` en `update`, o llama a
+`key_get()` después de `game_frame_begin()`. Nunca mezcles el modo raw con `scanf`/`fgets`.
+</Callout>
+
 <Quiz question="¿Qué modo hace que el mismo programa haga exactamente lo mismo en cada ejecución?"
   options="game_pace_ms|game_pace_real|Un presupuesto de instrucciones (game_init con ticks)|El reloj de pared"
   answer="2"

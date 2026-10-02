@@ -42,6 +42,12 @@ El **motor de copia** (`0x280`–`0x294`) hace movimientos y rellenos de búfer 
 `fb_clear` y `fb_blit` lo usan. Está ocupado 16 ciclos de GPU más uno por cada 4 bytes y lanza
 la interrupción 34 al terminar.
 
+<Callout type="tip" title="En un juego">
+Combínalo con el bucle de paso fijo de `ceres/game.h`: fija tú el nivel de vídeo, el cursor y el
+input raw, y dibuja con `fb_*` en el callback `draw` (`fb_present` ya espera al VBlank). Ver
+[El bucle de juego](/wiki/game-loop#combinarlo-con-el-framebuffer).
+</Callout>
+
 <Quiz question="¿Cuándo muestra fb_present() el fotograma que acabas de dibujar?"
   options="Inmediatamente|En el siguiente VBlank, tras intercambiar los búferes|Cuando el programa termina|En la siguiente pulsación"
   answer="1"

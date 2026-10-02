@@ -42,6 +42,12 @@ The **copy engine** (`0x280`–`0x294`) does full-buffer moves and fills without
 `fb_clear` and `fb_blit` use it. It is busy for 16 GPU cycles plus one per 4 bytes and raises
 interrupt 34 when it finishes.
 
+<Callout type="tip" title="In a game">
+Pair it with the fixed-step loop of `ceres/game.h`: set the video level, the cursor and raw
+input yourself, then draw with `fb_*` in the `draw` callback (`fb_present` already waits for the
+VBlank). See [The game loop](/wiki/game-loop#pairing-it-with-the-framebuffer).
+</Callout>
+
 <Quiz question="When does fb_present() show the frame you just drew?"
   options="Immediately|At the next vertical blank, after swapping the buffers|When the program ends|On the next keypress"
   answer="1"
