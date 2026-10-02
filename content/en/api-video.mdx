@@ -50,21 +50,22 @@ blank (`halt` with IRQ 32, or `FrameCounter` changing).
 ```c
 #include "ceres/video.h"
 
-video_init(320, 240);                 // the screen; Mode comes up at V0
-video_set_mode(VIDEO_MODE_V1);        // bitmap plane
-video_present();
-video_wait_vblank();
+video_set_resolution(320, 240);       // the screen; the level comes up at V0
+video_set_level(VIDEO_BITMAP);        // V1: the bitmap plane as well as the text
+video_present();                      // the planes' new bases at the next blank
+video_wait_present();                 // until that blank has come
 ```
 
 | Function | What it does |
 | --- | --- |
-| `video_init(w, h)` | Sets the screen size |
-| `video_set_mode(level)` | Chooses V0…V6 |
+| `video_set_resolution(w, h)` | Sets the screen size (`0` exact, `-1` out of range) |
+| `video_set_level(level)` | Chooses `VIDEO_TEXT` (0), `VIDEO_BITMAP` (1), `VIDEO_RETRO` (2); returns the level the GPU took |
 | `video_level()` | The current level |
+| `video_max_level()` | The highest the profile allows |
 | `video_present()` | Applies the pending bases at the next blank |
+| `video_wait_present()` | Blocks until that blank has come (a flip is done) |
 | `video_wait_vblank()` | Blocks until the next vertical blank |
-| `video_frames()` | The frame counter |
-| `video_line()` | The line being scanned |
+| `video_frame()` | The frame counter |
 
 <Callout type="info" title="Everything is wrapped">
 The `ceres/` headers wrap each register in functions: `ceres/video.h`, `ceres/text.h`,

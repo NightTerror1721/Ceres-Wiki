@@ -50,21 +50,22 @@ programa que quiere una imagen por fotograma dibuja en el búfer trasero, escrib
 ```c
 #include "ceres/video.h"
 
-video_init(320, 240);                 // la pantalla; el Mode arranca en V0
-video_set_mode(VIDEO_MODE_V1);        // plano bitmap
-video_present();
-video_wait_vblank();
+video_set_resolution(320, 240);       // la pantalla; el nivel arranca en V0
+video_set_level(VIDEO_BITMAP);        // V1: el plano bitmap además del texto
+video_present();                      // las bases nuevas de los planos en el siguiente blank
+video_wait_present();                 // hasta que ese blank llegue
 ```
 
 | Función | Qué hace |
 | --- | --- |
-| `video_init(w, h)` | Fija el tamaño de la pantalla |
-| `video_set_mode(level)` | Elige V0…V6 |
+| `video_set_resolution(w, h)` | Fija el tamaño de la pantalla (`0` exacto, `-1` fuera de rango) |
+| `video_set_level(level)` | Elige `VIDEO_TEXT` (0), `VIDEO_BITMAP` (1), `VIDEO_RETRO` (2); devuelve el nivel que tomó la GPU |
 | `video_level()` | El nivel actual |
+| `video_max_level()` | El más alto que permite el perfil |
 | `video_present()` | Aplica las bases pendientes en el siguiente blank |
+| `video_wait_present()` | Bloquea hasta que ese blank llegue (se hace el flip) |
 | `video_wait_vblank()` | Bloquea hasta el siguiente VBlank |
-| `video_frames()` | El contador de fotogramas |
-| `video_line()` | La línea que se recorre |
+| `video_frame()` | El contador de fotogramas |
 
 <Callout type="info" title="Todo está envuelto">
 Las cabeceras de `ceres/` envuelven cada registro en funciones: `ceres/video.h`, `ceres/text.h`,
